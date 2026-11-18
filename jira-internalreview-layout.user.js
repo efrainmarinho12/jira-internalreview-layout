@@ -6,6 +6,8 @@
 // @author       Efra
 // @match        https://jira.uhub.biz/browse/*
 // @icon         https://jira.uhub.biz/favicon.ico
+// @updateURL    https://raw.githubusercontent.com/efrainmarinho12/jira-internalreview-layout/main/jira-internalreview-layout.user.js
+// @downloadURL  https://raw.githubusercontent.com/efrainmarinho12/jira-internalreview-layout/main/jira-internalreview-layout.user.js
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue
