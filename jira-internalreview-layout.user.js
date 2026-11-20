@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jira Uhub - Layout pra Internal Review
 // @namespace    https://jira.uhub.biz/
-// @version      6.25.0
+// @version      6.27.0
 // @description  Layout otimizado e responsivo para issues Internal Review (barra de resumo editavel, painel flutuante de metadados, anexos em largura total e coluna de comentarios), com atualizacao automatica, notificacoes e indicador de status.
 // @author       Efra
 // @match        https://jira.uhub.biz/browse/*
@@ -491,7 +491,7 @@ html.uhub-att #attachmentmodule #attachment_thumbnails .attachment-content dl .a
 #addcomment > .uhub-me-avatar { position: absolute; width: 32px; height: 32px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 1px rgba(9, 30, 66, 0.13); background: #dfe1e6; pointer-events: auto; z-index: 1 }
 #addcomment > .uhub-me-avatar[hidden] { display: none }
 #attachmentmodule_heading .uhub-att-li input[type="range"] { width: 120px; accent-color: var(--uhub-accent); margin: 0 }
-#attachmentmodule_heading .uhub-att-li .uhub-att-val { min-width: 42px; font-variant-numeric: tabular-nums }
+#attachmentmodule_heading .uhub-att-li .uhub-att-val { min-width: 66px; font-variant-numeric: tabular-nums }
 #attachmentmodule_heading .uhub-att-reset { appearance: none; border: 0; background: transparent; width: 26px; height: 24px; padding: 0; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; color: var(--ds-icon, #42526e); cursor: pointer }
 #attachmentmodule_heading .uhub-att-reset:hover { background: rgba(9, 30, 66, 0.08); color: #172b4d }
 #attachmentmodule_heading .uhub-att-reset:disabled { opacity: 0.35; cursor: default; background: transparent }
@@ -757,7 +757,7 @@ html.uhub-wide dd.uhub-due-dd > #due-date { width: auto !important; flex: 0 1 au
 #uhub-review-chip:hover { background: #cce0ff }
 /* Faixa do modo revisao: Prioridade · Responsavel · Solicitante · Ficar pronto */
 #uhub-review-meta { display: none }
-html.uhub-wide #uhub-review-meta:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; grid-column: 1 / -1; min-width: 0; margin: 0 0 16px; padding: 9px 14px; background: var(--uhub-bg-subtle); border: 1px solid var(--uhub-border); border-radius: 6px; box-sizing: border-box; font-size: 14px; line-height: 20px; color: #172b4d; container: uhubrm / inline-size }
+html.uhub-wide #uhub-review-meta:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; grid-column: 1 / -1; min-width: 0; margin: 0 0 16px; padding: 9px 48px 9px 14px; position: relative; background: var(--uhub-bg-subtle); border: 1px solid var(--uhub-border); border-radius: 6px; box-sizing: border-box; font-size: 14px; line-height: 20px; color: #172b4d; container: uhubrm / inline-size }
 html.uhub-wide.uhub-cstack #uhub-review-meta { order: -1 }
 #uhub-review-meta .rm-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; white-space: nowrap }
 #uhub-review-meta .rm-label { flex: 0 0 auto; font-size: 12px; color: var(--uhub-text-muted) }
@@ -782,7 +782,7 @@ html.uhub-wide.uhub-cstack #uhub-review-meta { order: -1 }
 #uhub-review-meta .rm-val img { flex: 0 0 auto; vertical-align: middle }
 #uhub-review-meta .user-hover { display: inline-flex; align-items: center; gap: 6px; min-width: 0 }
 #uhub-review-meta .aui-avatar { flex: 0 0 auto }
-#uhub-meta-info-btn { appearance: none; border: 1px solid transparent; background: transparent; color: var(--uhub-text-muted); width: 26px; height: 26px; padding: 0; margin-left: auto; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 auto; transition: background 0.1s ease, color 0.1s ease }
+#uhub-meta-info-btn { appearance: none; border: 1px solid transparent; background: transparent; color: var(--uhub-text-muted); width: 26px; height: 26px; padding: 0; margin: 0; position: absolute; top: 9px; right: 14px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 auto; transition: background 0.1s ease, color 0.1s ease }
 #uhub-meta-info-btn:hover { background: rgba(9, 30, 66, 0.08); color: #172b4d }
 #uhub-meta-info-btn.uhub-active { background: #deebff; color: #044099; border-color: rgba(4, 64, 153, 0.25) }
 #uhub-meta-info-btn:focus-visible { outline: 2px solid #4c9aff; outline-offset: 1px }
@@ -1173,9 +1173,6 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       positionNavToggle();
     } else if (key === 'attProportional') {
       syncAttachmentControls();
-    } else if (key === 'attGroup' || key === 'attSens') {
-      attGroupSig = '';
-      applyAttachmentGrouping();
     } else if (key === 'betaViewer') {
       if (!prefs.betaViewer) closeBetaViewer();
       qa('#attachment_thumbnails li.attachment-content').forEach(addAttachmentCiteButton);
@@ -1203,8 +1200,6 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     refreshSliderUI();
     refreshAllTileResolutions();
     positionNavToggle();
-    attGroupSig = '';
-    applyAttachmentGrouping();
     if (prefs.autoRefresh) {
       auto.stopped = false;
       auto.failures = 0;
@@ -2268,8 +2263,30 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
   // "Assinatura" do conteudo visivel: texto + links + imagens (ignora atributos que o proprio navegador/AUI
   // mexe, como resolved/aria-*)
   const OUR_DECORATIONS = '[id^="uhub-"], #uhub-sendcheck, .uhub-att-sel, .uhub-att-selbar, .uhub-me-avatar, .uhub-att-nodel-trash, .uhub-att-li, .uhub-reply-btn, .uhub-copy-btn, .uhub-more-li, .uhub-att-cite, .uhub-att-inspect, .uhub-att-vtag, .uhub-att-new, .uhub-due, .uhub-attg-label, .uhub-attg-chip, .uhub-attg-head';
+  // Assinatura da lista de anexos: so ids e tamanhos. As miniaturas ganham previas, selos e outro src de imagem
+  // do script, entao comparar o HTML inteiro fazia o modulo ser trocado a toa e os anexos piscavam.
+  function attModuleSignature(el) {
+    try {
+      if (!el || !el.querySelector || !(el.id === 'attachmentmodule' || el.querySelector('#attachment_thumbnails'))) return null;
+      const lis = Array.from(el.querySelectorAll('li.attachment-content'));
+      if (!lis.length) return null;
+      const parts = lis.map((li) => {
+        const a = li.querySelector('a.attachment-title') || li.querySelector('.attachment-thumb a[href]');
+        const href = a ? (a.getAttribute('href') || '') : '';
+        const m = /\/secure\/attachment\/(\d+)\//.exec(href);
+        const sz = li.querySelector('.attachment-size');
+        return `${m ? m[1] : href}:${sz ? cleanText(sz.textContent) : ''}`;
+      });
+      return `att:${hashString(parts.join('|'))}`;
+    } catch (e) {
+      try { diag({ kind: 'att-signature', msg: String((e && e.message) || e) }); } catch {}
+      return null;
+    }
+  }
   function contentSignature(el) {
     if (!el) return '';
+    const attSig = attModuleSignature(el);
+    if (attSig !== null) return attSig;
     // campo que foi para a barra de resumo conta como se estivesse no lugar (senao o modulo seria trocado a toa)
     const moved = Object.keys(rmHome).some((k) => rmHome[k] && el.contains(rmHome[k]));
     if (moved || el.querySelector(OUR_DECORATIONS) || el.querySelector('li.uhub-attg')) {
@@ -6208,7 +6225,27 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
         }
       });
     }
-    img.setAttribute('src', want);
+    // troca para a versao grande so depois de ela carregar (evita o quadro em branco / piscada)
+    if (!wantFull) {
+      img.dataset.uhubSwap = '';
+      img.setAttribute('src', want);
+      return;
+    }
+    if (img.dataset.uhubSwap === want) return;
+    img.dataset.uhubSwap = want;
+    try {
+      const pre = new Image();
+      pre.onload = () => {
+        try { if (img.dataset.uhubSwap === want && img.getAttribute('src') !== want) img.setAttribute('src', want); } catch (e) { perRowLog(e); }
+      };
+      pre.onerror = () => {
+        try { img.dataset.uhubNoFull = '1'; img.dataset.uhubSwap = ''; } catch (e) { perRowLog(e); }
+      };
+      pre.src = want;
+    } catch (e) {
+      perRowLog(e);
+      img.setAttribute('src', want);
+    }
   }
   function decorateAttachments() {
     const list = gid('attachment_thumbnails');
@@ -6230,7 +6267,6 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     applyReviewSize();
     syncReviewMeta();
     applyAttachmentNewBadges();
-    applyAttachmentGrouping();
     bindEditorPreview();
   }
   // ---------- Citar o anexo no novo comentario ---------- Balao preenchido com aspas vazadas: mesmo peso
@@ -6514,10 +6550,6 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
           clearTimeout(t._uhubT);
           t._uhubT = setTimeout(() => { t.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>'; t.classList.remove('uhub-copied'); }, 1400);
         });
-      } else if (t.classList.contains('uhub-attg-chip')) {
-        const key = t.dataset.g || '';
-        if (attGroupOpen.has(key)) attGroupOpen.delete(key); else attGroupOpen.add(key);
-        applyAttachmentGrouping();
       }
     } catch (e) {
       try { diag({ kind: 'button-click', err: String((e && e.message) || e) }); } catch {}
@@ -6525,6 +6557,39 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     }
   }
   document.addEventListener('click', onUhubButtonClick, true);
+  // Imagens embutidas no corpo dos comentarios (coladas ou com miniatura): abrem no Visualizador Beta.
+  // So intercepta quando o anexo esta na lista de anexos da issue; nos outros casos (ou com Cmd/Ctrl/Shift/Alt)
+  // o clique segue o comportamento normal do Jira.
+  function onCommentImageClick(ev) {
+    try {
+      if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+      if (!prefs.betaViewer || !attOn()) return;
+      const tgt = ev.target;
+      if (!tgt || !tgt.closest) return;
+      const img = tgt.closest('img');
+      if (!img || img.classList.contains('rendericon') || !img.closest('.action-body')) return;
+      if (img.closest('#uhub-beta-viewer, #addcomment, #attachment_thumbnails')) return;
+      const a = img.closest('a');
+      const fromSrc = /\/secure\/(?:attachment|thumbnail)\/(\d+)\//.exec(img.getAttribute('src') || '');
+      const fromHref = a ? /\/secure\/attachment\/(\d+)\//.exec(a.getAttribute('href') || '') : null;
+      const previewId = a ? a.getAttribute('file-preview-id') : '';
+      if (a && !previewId && !fromHref) return;
+      const id = previewId || (fromHref && fromHref[1]) || (fromSrc && fromSrc[1]) || '';
+      if (!id) return;
+      const li = Array.from(qa('#attachment_thumbnails li.attachment-content')).find((x) => {
+        const r = attachmentRef(x);
+        return !!r && r.id === String(id);
+      });
+      const ref = li ? attachmentRef(li) : null;
+      if (!li || !ref || !isImageAttachmentLi(li, ref)) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      openBetaViewer(ref.id, ref.file);
+    } catch (e) {
+      try { diag({ kind: 'comment-image-click', err: String((e && e.message) || e) }); } catch {}
+    }
+  }
+  document.addEventListener('click', onCommentImageClick, true);
   // ---------- Visualizador Unificado BETA: Leitor Vertical 1:1 + Light vs Dark (_dm) + Comparacao (max 2 imagens) ----------
   const BV_ZOOM_STEPS = [25, 50, 75, 100, 125, 150, 200, 250, 300];
 
@@ -8694,7 +8759,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
   function applyAttachmentGrouping() {
     const list = gid('attachment_thumbnails');
     if (!list) return;
-    const mode = attOn() ? prefs.attGroup : 'off';
+    const mode = 'off';
     const sens = prefs.attSens;
     const lis = attEnsureOrder(list);
     const infos = lis.map(attLiInfo).filter(Boolean);
@@ -9196,7 +9261,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     return Math.round(Math.max(settings.attSize, Math.min(600, Math.max(320, per))));
   }
   function effectiveAttSize() {
-    return reviewOn() ? (parseFloat(document.documentElement.style.getPropertyValue('--uhub-att-w')) || settings.attSize) : settings.attSize;
+    return parseFloat(document.documentElement.style.getPropertyValue('--uhub-att-w')) || settings.attSize;
   }
   function applyReviewSize() {
     if (!reviewOn()) return;
@@ -9515,7 +9580,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     // Botao de troca exclusiva entre Responsavel e Solicitante (setas esquerda/direita)
     const assigneeItem = strip.querySelector('.rm-assignee');
     const reporterItem = strip.querySelector('.rm-reporter');
-    const hasBothUsers = !!(assigneeItem && !assigneeItem.hidden && reporterItem && !reporterItem.hidden);
+    const hasBothUsers = false; // botão de troca removido da interface
     let swapBtn = strip.querySelector('.uhub-rm-pass');
     if (hasBothUsers) {
       const key = state.issueKey || getIssueKey();
@@ -9777,12 +9842,75 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     qa('#attachment_thumbnails li.attachment-content[data-uhub-att]').forEach(applyTileResolution);
   }
   // Tamanho dos anexos por issue: o que você escolher vale só para esta issue; sem escolha, calcula para preencher a largura
-  function issueSizeKey() { return `attSizeIssue:${getIssueKey() || state.issueKey || ''}`; }
+  // Anexos por linha (N): salvo por issue, 0 = automatico. A largura de cada anexo sai de N e da largura da lista;
+  // a altura da miniatura (largura x 0,725) fica sempre entre 128 e 512px. Vale tambem no modo revisao.
+  const PERROW = { gap: 14, ratio: 0.725, hMin: 128, hMax: 512, nMax: 12 };
+  PERROW.sMin = Math.ceil(PERROW.hMin / PERROW.ratio);
+  PERROW.sMax = Math.floor(PERROW.hMax / PERROW.ratio);
+  function perRowLog(e) {
+    try {
+      const t = Date.now();
+      if (perRowLog.at && t - perRowLog.at < 10000) return;
+      perRowLog.at = t;
+      diag({ kind: 'att-perrow', msg: String(e && e.message || e) });
+    } catch {}
+  }
+  function issueSizeKey() { return `attPerRow:${getIssueKey() || state.issueKey || ''}`; }
   function issueUserSize() {
-    const k = issueSizeKey();
-    if (k === 'attSizeIssue:') return 0;
-    const v = Number(GM_getValue(k, 0)) || 0;
-    return v ? Math.max(LIMITS.attSize.min, Math.min(LIMITS.attSize.max, Math.round(v))) : 0;
+    try {
+      const k = issueSizeKey();
+      if (k === 'attPerRow:') return 0;
+      const v = Math.round(Number(GM_getValue(k, 0)) || 0);
+      return v >= 1 ? Math.min(PERROW.nMax, v) : 0;
+    } catch (e) { perRowLog(e); return 0; }
+  }
+  function perRowAuto(W, count, lo, hi) {
+    const P = PERROW;
+    const target = reviewOn() ? 440 : 280;
+    let best = lo;
+    let bestScore = Infinity;
+    for (let k = lo; k <= hi; k++) {
+      const s = Math.floor((W - P.gap * (k - 1)) / k);
+      const empty = Math.ceil(count / k) * k - count;
+      const score = (empty / k) * 50 + (Math.abs(s - target) / target) * 50;
+      if (score < bestScore - 0.01) { bestScore = score; best = k; }
+    }
+    return best;
+  }
+  function perRowInfo() {
+    const P = PERROW;
+    const fallback = { ok: false, n: 0, min: 2, max: 2, S: settings.attSize, count: 0, W: 0 };
+    try {
+      const list = gid('attachment_thumbnails');
+      if (!list) return fallback;
+      const W = list.getBoundingClientRect().width - 1;
+      const count = Array.from(qa('#attachment_thumbnails li.attachment-content')).filter((li) => li.getClientRects().length).length;
+      if (W < 200 || !count) return fallback;
+      const hi = Math.max(1, Math.min(P.nMax, Math.floor((W + P.gap) / (P.sMin + P.gap)), count));
+      const lo = Math.min(Math.max(2, Math.ceil((W + P.gap) / (P.sMax + P.gap))), hi);
+      let n;
+      const user = issueUserSize();
+      if (user) n = Math.max(lo, Math.min(hi, user));
+      else {
+        n = perRowAuto(W, count, lo, hi);
+        // trava de seguranca contra vai-e-volta (ex.: barra de rolagem aparecendo/sumindo)
+        const f = perRowInfo;
+        const now = Date.now();
+        f.hist = (f.hist || []).filter((t) => now - t < 2000);
+        if (f.last !== undefined && n !== f.last) f.hist.push(now);
+        if (f.hist.length > 6 && f.last !== undefined) n = Math.max(lo, Math.min(hi, f.last));
+        f.last = n;
+      }
+      let S = Math.max(P.sMin, Math.min(P.sMax, Math.floor((W - P.gap * (n - 1)) / n)));
+      // anti-vai-e-volta: se so sobrou um espaco pequeno (ex.: barra de rolagem sumiu), mantem o tamanho
+      // anterior, que ainda cabe. Encolher quando falta espaco continua imediato.
+      const st = perRowInfo;
+      if (st.keepS && st.keepN === n && st.keepCount === count && S > st.keepS && (S - st.keepS) * n <= 18) S = st.keepS;
+      st.keepS = S;
+      st.keepN = n;
+      st.keepCount = count;
+      return { ok: true, n, min: lo, max: hi, S, count, W };
+    } catch (e) { perRowLog(e); return fallback; }
   }
   // Largura real de cada anexo, igual às regras do CSS (inclui "largura proporcional")
   function autoFitAttSize() {
@@ -9853,10 +9981,10 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       bindAttFitWatchers.ro.observe(list);
     }
     bindAttFitWatchers.mo = new MutationObserver(run);
-    bindAttFitWatchers.mo.observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-uhub-aspect', 'style', 'class'] });
+    bindAttFitWatchers.mo.observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-uhub-aspect', 'style', 'class', 'hidden'] });
   }
   function attWidthWanted() {
-    try { return issueUserSize() || autoFitAttSize(); } catch (e) { return settings.attSize; }
+    try { return perRowInfo().S; } catch (e) { perRowLog(e); return settings.attSize; }
   }
   function applyAttWidth() {
     if (!attOn()) return;
@@ -9870,8 +9998,10 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     refreshAllTileResolutions();
   }
   function setIssueAttSize(v) {
-    const k = issueSizeKey();
-    if (k !== 'attSizeIssue:') GM_setValue(k, v ? Math.round(v) : 0);
+    try {
+      const k = issueSizeKey();
+      if (k !== 'attPerRow:') GM_setValue(k, v ? Math.round(v) : 0);
+    } catch (e) { perRowLog(e); }
     applyAttWidth();
     syncAttachmentControls();
   }
@@ -10235,14 +10365,14 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     li.title = 'Tamanho dos anexos (vale para todas as issues)';
     const input = mk('input');
     input.type = 'range';
-    input.min = LIMITS.attSize.min;
-    input.max = LIMITS.attSize.max;
-    input.step = 10;
-    input.value = settings.attSize;
-    input.setAttribute('aria-label', 'Tamanho dos anexos');
+    input.min = 2;
+    input.max = 12;
+    input.step = 1;
+    input.value = 4;
+    input.setAttribute('aria-label', 'Anexos por linha');
     const val = mk('span');
     val.className = 'uhub-att-val';
-    val.textContent = `${settings.attSize}px`;
+    val.textContent = '4 por linha';
     ['pointerdown', 'mousedown', 'click', 'keydown'].forEach((t) => li.addEventListener(t, (ev) => ev.stopPropagation()));
     input.addEventListener('input', () => { setIssueAttSize(Number(input.value)); });
     const reset = mk('button');
@@ -10297,57 +10427,46 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       const input = li.querySelector('input');
       const val = li.querySelector('.uhub-att-val');
       const rev = false;
-      const size = attWidthWanted();
-      if (input && Number(input.value) !== size) input.value = size;
-      if (val && val.textContent !== `${size}px`) val.textContent = `${size}px`;
+      const pr = perRowInfo();
+      if (input && pr.ok) {
+        if (Number(input.min) !== pr.min) input.min = pr.min;
+        if (Number(input.max) !== pr.max) input.max = pr.max;
+        if (Number(input.value) !== pr.n) input.value = pr.n;
+        input.disabled = pr.max <= pr.min;
+      }
+      const prTxt = pr.ok ? `${pr.n} por linha` : '';
+      if (val && prTxt && val.textContent !== prTxt) val.textContent = prTxt;
       const reset = li.querySelector('.uhub-att-reset');
       if (reset) {
         reset.disabled = rev ? !reviewUserSize() : !issueUserSize();
-        const t = rev ? 'Voltar ao tamanho automático do modo revisão' : 'Voltar ao tamanho automático (preenche a largura)';
+        const t = rev ? 'Voltar ao tamanho automático do modo revisão' : 'Voltar ao automático (anexos por linha)';
         if (reset.title !== t) { reset.title = t; reset.setAttribute('aria-label', t); }
       }
-      const lt = rev ? 'Tamanho dos anexos no modo revisão' : 'Tamanho dos anexos (salvo só para esta issue)';
+      const lt = rev ? 'Tamanho dos anexos no modo revisão' : 'Anexos por linha (salvo só para esta issue)';
       if (li.title !== lt) li.title = lt;
       const del = li.querySelector('.uhub-att-delall');
       if (del) del.hidden = !attachmentIds().length;
     });
-    document.documentElement.classList.toggle('uhub-att-prop', !!prefs.attProportional);
+    document.documentElement.classList.remove('uhub-att-prop');
   }
   function buildAttachmentSection() {
     const wrap = mk('div');
     wrap.className = 'sp-section';
     wrap.innerHTML = '<div class="sp-section-title">Anexos</div>';
-    wrap.appendChild(buildSliderField({
-      key: 'attSize',
-      label: 'Tamanho dos anexos',
-      defaultLabel: `${DEFAULTS.attSize}px`,
-      hint: 'Largura de cada anexo (200px é o tamanho original do Jira). Também ajustável no cabeçalho de Anexos.',
-      onChange: () => refreshAllTileResolutions(),
-    }));
+    const prNote = mk('div');
+    prNote.className = 'sp-field';
+    const prHint = mk('div');
+    prHint.className = 'sp-hint';
+    prHint.textContent = 'Tamanho dos anexos: use o controle "anexos por linha" no cabeçalho de Anexos (2 a 12). Vale por issue e no modo revisão; o automático escolhe sozinho.';
+    prNote.appendChild(prHint);
+    wrap.appendChild(prNote);
     const { row, input } = buildCheckboxRow('attProportional', 'Largura proporcional (anexo estreito ocupa menos espaço)');
     input.addEventListener('change', () => {
       savePref('attProportional', input.checked);
       syncAttachmentControls();
     });
+    row.style.display = 'none';
     wrap.appendChild(row);
-    wrap.appendChild(buildChoiceField({
-      key: 'attGroup',
-      label: 'Agrupar versões (v1, v2, v3…)',
-      defaultLabel: 'Pilha',
-      options: [['off', 'Desligado'], ['stack', 'Pilha'], ['frame', 'Moldura']],
-      hint: () => ({
-        off: 'Anexos na ordem original do Jira.',
-        stack: 'Mostra a versão atual; as anteriores abrem num clique. OPs e _dm ficam juntos na mesma versão.',
-        frame: 'Todas as versões visíveis, lado a lado, dentro de uma moldura.',
-      })[prefs.attGroup],
-    }));
-    wrap.appendChild(buildChoiceField({
-      key: 'attSens',
-      label: 'Sensibilidade do agrupamento',
-      defaultLabel: 'Normal',
-      options: [['estrito', 'Estrito'], ['normal', 'Normal'], ['amplo', 'Amplo']],
-      hint: () => ATT_SENS_HINT[prefs.attSens],
-    }));
     return wrap;
   }
   // Campo de escolha (botoes segmentados) para prefs de texto
