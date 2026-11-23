@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jira Uhub - Layout pra Internal Review
 // @namespace    https://jira.uhub.biz/
-// @version      6.27.0
+// @version      6.35.0
 // @description  Layout otimizado e responsivo para issues Internal Review (barra de resumo editavel, painel flutuante de metadados, anexos em largura total e coluna de comentarios), com atualizacao automatica, notificacoes e indicador de status.
 // @author       Efra
 // @match        https://jira.uhub.biz/browse/*
@@ -20,6 +20,48 @@
 // @resource     pdfWorker https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js
 // @run-at       document-start
 // ==/UserScript==
+// Compatibilidade: se o gerenciador de scripts nao oferecer GM_getValue/GM_setValue/GM_addStyle (ex.: Greasemonkey 4), usa o armazenamento do proprio navegador. Onde essas funcoes existem (Tampermonkey, Violentmonkey), nada muda.
+try {
+  const gmKey = (k) => `uhub-gm:${k}`;
+  if (typeof GM_getValue !== 'function') {
+    window.GM_getValue = (k, def) => {
+      try {
+        const raw = window.localStorage.getItem(gmKey(k));
+        return raw === null ? def : JSON.parse(raw);
+      } catch (e) { return def; }
+    };
+  }
+  if (typeof GM_setValue !== 'function') {
+    window.GM_setValue = (k, v) => {
+      try { window.localStorage.setItem(gmKey(k), JSON.stringify(v)); } catch (e) { /* cheio ou bloqueado */ }
+    };
+  }
+  if (typeof GM_deleteValue !== 'function') {
+    window.GM_deleteValue = (k) => {
+      try { window.localStorage.removeItem(gmKey(k)); } catch (e) { /* ok */ }
+    };
+  }
+  if (typeof GM_listValues !== 'function') {
+    window.GM_listValues = () => {
+      const out = [];
+      try {
+        for (let i = 0; i < window.localStorage.length; i += 1) {
+          const k = window.localStorage.key(i);
+          if (k && k.indexOf('uhub-gm:') === 0) out.push(k.slice(8));
+        }
+      } catch (e) { /* ok */ }
+      return out;
+    };
+  }
+  if (typeof GM_addStyle !== 'function') {
+    window.GM_addStyle = (css) => {
+      const st = document.createElement('style');
+      st.textContent = css;
+      (document.head || document.documentElement).appendChild(st);
+      return st;
+    };
+  }
+} catch (e) { console.warn('[Jira layout] compatibilidade GM_*:', e); }
 // Copiar titulo (#summary-val) e chave (#key-val / .issue-link) em 1 clique
 const ICON_COPY = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8.5" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 3.5V3A1.5 1.5 0 0 0 9 1.5H4A1.5 1.5 0 0 0 2.5 3v6.5A1.5 1.5 0 0 0 4 11h1" stroke="currentColor" stroke-width="1.4"/></svg>';
 const ICON_CHECK = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -443,6 +485,11 @@ html.uhub-overlay-compress #uhub-sidebar-scroll { background: var(--uhub-bg); cl
 /* Copiar link do comentario: ao lado do "Responder" (ou da data) */
 .action-details .uhub-cmt-copy { width: 20px; height: 20px; margin: 0 0 0 4px; vertical-align: middle; position: relative; top: -0.1em }
 .action-details .uhub-cmt-copy svg { width: 14px; height: 14px }
+/* Imagens embutidas em comentarios: ao passar o mouse, crescem um pouco e ganham sombra suave (clique abre no Visualizador Beta) */
+html.uhub-att .action-body .image-wrap img:not(.rendericon) { position: relative; cursor: pointer; border-radius: 3px; transition: transform 0.15s ease, box-shadow 0.15s ease }
+html.uhub-att .action-body .image-wrap img:not(.rendericon):hover { transform: scale(1.06); z-index: 5; box-shadow: 0 6px 18px rgba(9, 30, 66, 0.35), 0 1px 4px rgba(9, 30, 66, 0.2) }
+/* Folga lateral no corpo do comentario: o texto continua no mesmo lugar, mas a imagem ampliada e a sombra ganham espaco e nao sao cortadas pela borda invisivel do comentario */
+#uhub-sidebar-scroll .action-body { padding-left: 20px !important; padding-right: 20px !important; margin-left: -20px !important; margin-right: -20px !important; overflow: visible !important }
 /* Titulo + botao de copiar na mesma linha, centralizados verticalmente (flex no container do titulo; a trilha de navegacao ocupa a linha de cima) */
 html.uhub-wide header#stalker .aui-page-header-main { display: flex !important; flex-wrap: wrap; align-items: center }
 html.uhub-wide header#stalker .aui-page-header-main > nav, html.uhub-wide header#stalker .aui-page-header-main > ol { flex: 1 0 100% }
@@ -506,6 +553,24 @@ html.uhub-att #attachment_thumbnails { isolation: isolate }
 html.uhub-wide:not(.uhub-narrow) header#stalker:has(.aui-dropdown2[aria-hidden="false"], .aui-dropdown2[open], .aui-dropdown2-trigger[aria-expanded="true"]), html.uhub-wide.uhub-narrow.uhub-comments-collapsed header#stalker:has(.aui-dropdown2[aria-hidden="false"], .aui-dropdown2[open], .aui-dropdown2-trigger[aria-expanded="true"]) { z-index: calc(var(--uhub-z, 500) + 150) !important }
 html.uhub-att #attachmentmodule #attachment_thumbnails .attachment-delete a, html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-att-cite { clip: auto !important; position: static !important; box-sizing: border-box; width: 24px !important; height: 24px !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; display: inline-flex !important; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: rgba(255, 255, 255, 0.92) !important; box-shadow: 0 1px 3px rgba(9, 30, 66, 0.25); color: #42526e !important; cursor: pointer; opacity: 1 !important; visibility: visible !important }
 html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-att-cite { position: absolute !important; top: 6px; right: 34px; z-index: 3 }
+html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-att-rename { position: absolute; top: 6px; right: 62px; z-index: 3; box-sizing: border-box; width: 24px; height: 24px; margin: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: rgba(255, 255, 255, 0.92); box-shadow: 0 1px 3px rgba(9, 30, 66, 0.25); color: #42526e; cursor: pointer; transition: opacity 0.12s ease }
+html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-att-rename:hover { background: #fff0b3; color: #7a4a00 }
+html.uhub-att:not(.uhub-att-selecting) #attachmentmodule #attachment_thumbnails li.attachment-content:not(:hover):not(:focus-within) .uhub-att-rename { opacity: 0 !important; pointer-events: none !important }
+html:not(.uhub-att) .uhub-att-rename { display: none !important }
+#uhub-confirm-backdrop { z-index: 2147483000 !important }
+#uhub-beta-viewer .bv-act-rn:not(:disabled):hover { background: #fff0b3 !important; color: #7a4a00 !important }
+#uhub-beta-viewer .bv-act-dl:not(:disabled):hover { background: #e3fcef !important; color: #006644 !important }
+#uhub-beta-viewer .bv-act-del:not(:disabled):hover { background: #ffebe6 !important; color: #bf2600 !important }
+#uhub-beta-viewer .bv-act-rn:disabled, #uhub-beta-viewer .bv-act-del:disabled { opacity: 0.45; cursor: not-allowed }
+#uhub-beta-viewer .bv-rn { position: absolute; z-index: 2; display: flex; align-items: center; box-sizing: border-box; min-width: 0; border-radius: 3px; background: #ffffff; box-shadow: inset 0 0 0 2px #4c9aff }
+#uhub-beta-viewer .bv-rn-input { flex: 1 1 auto; min-width: 0; box-sizing: border-box; height: 100%; margin: 0; padding: 0 6px; font: inherit; line-height: normal; border: 0; border-radius: 3px; background: transparent; color: #172b4d; box-shadow: none; outline: 0 }
+#uhub-beta-viewer .bv-rn-ext { flex: 0 0 auto; padding-right: 6px; font: inherit; line-height: normal; color: #42526e }
+html.uhub-att #attachmentmodule #attachment_thumbnails .attachment-delete a .aui-icon { display: none !important }
+html.uhub-att #attachmentmodule #attachment_thumbnails .attachment-delete a::before { content: ""; display: block; width: 16px; height: 16px; background-color: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4h11M6 4V2.8c0-.4.3-.8.8-.8h2.4c.5 0 .8.4.8.8V4M4 4l.6 8.7c.1.7.6 1.3 1.4 1.3h4c.8 0 1.3-.6 1.4-1.3L12 4M6.7 6.8v4.4M9.3 6.8v4.4'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4h11M6 4V2.8c0-.4.3-.8.8-.8h2.4c.5 0 .8.4.8.8V4M4 4l.6 8.7c.1.7.6 1.3 1.4 1.3h4c.8 0 1.3-.6 1.4-1.3L12 4M6.7 6.8v4.4M9.3 6.8v4.4'/%3E%3C/svg%3E") center / contain no-repeat }
+html.uhub-att #attachmentmodule #attachment_thumbnails li.uhub-att-busy { opacity: 0.55; pointer-events: none }
+html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-att-rn { display: flex; align-items: center; width: 100%; box-sizing: border-box }
+html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-att-rn-input { flex: 1 1 auto; min-width: 0; box-sizing: border-box; height: 24px; margin: 0; padding: 0 6px; font: inherit; font-size: 12px; border: 2px solid #4c9aff; border-radius: 3px; background: #ffffff; color: #172b4d; outline: 0 }
+html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-att-rn-ext { flex: 0 0 auto; padding-left: 2px; font-size: 12px; color: var(--uhub-text-muted) }
 /* Anexo que o Jira nao deixa excluir: lixeira desativada no mesmo lugar */
 html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-att-nodel-trash { position: absolute; top: 6px; right: 6px; z-index: 3; box-sizing: border-box; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: rgba(255, 255, 255, 0.92); box-shadow: 0 1px 3px rgba(9, 30, 66, 0.25); color: #a5adba; cursor: not-allowed }
 html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-att-nodel-trash .aui-icon { color: inherit !important; margin: 0 !important }
@@ -538,9 +603,14 @@ html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-pdfp canvas { displ
 html.uhub-att #attachmentmodule #attachment_thumbnails li.uhub-vid-on .attachment-thumb a > .attachment-thumbnail-icon { position: absolute !important; left: 6px !important; bottom: 6px !important; top: auto !important; right: auto !important; z-index: 3; box-sizing: border-box !important; width: 24px !important; height: 24px !important; max-width: none !important; max-height: none !important; margin: 0 !important; padding: 3px !important; object-fit: contain; display: block !important; border-radius: 4px; background: rgba(255, 255, 255, 0.92) !important; box-shadow: 0 1px 3px rgba(9, 30, 66, 0.25); pointer-events: none }
 html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-vidp { position: relative; box-sizing: border-box; width: 100%; height: 100%; overflow: hidden; background: #172b4d }
 html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-vidp video { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none }
+html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-vidp.uhub-vidp-play::after { display: none }
+html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-vidp-bar { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: #de350b; pointer-events: none; z-index: 2 }
 html.uhub-att #attachmentmodule #attachment_thumbnails li.uhub-vid-on.attachment-content .attachment-thumb a > span.attachment-thumbnail-icon { display: flex !important; align-items: center; justify-content: center; text-indent: 0 !important; line-height: 1 !important; overflow: hidden !important; font-size: 16px !important }
 html.uhub-att #attachmentmodule #attachment_thumbnails li.uhub-vid-on.attachment-content .attachment-thumb a > span.attachment-thumbnail-icon::before { position: static !important; margin: 0 !important; width: auto !important; height: auto !important; font-size: 16px !important; line-height: 1 !important; transform: none !important }
 html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-vidp::after { content: ""; position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: rgba(9, 30, 66, 0.62) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23fff' d='M6 4.5v7l5.5-3.5z'/%3E%3C/svg%3E") center / 22px no-repeat; pointer-events: none }
+/* Sem icone de tipo de arquivo no canto das miniaturas (zip, PDF, video) e sem selo "novo" */
+html.uhub-att #attachmentmodule #attachment_thumbnails li.uhub-zp-on .attachment-thumb a > .attachment-thumbnail-icon, html.uhub-att #attachmentmodule #attachment_thumbnails li.uhub-pdf-on .attachment-thumb a > .attachment-thumbnail-icon, html.uhub-att #attachmentmodule #attachment_thumbnails li.uhub-vid-on .attachment-thumb a > .attachment-thumbnail-icon, html.uhub-att #attachmentmodule #attachment_thumbnails li.uhub-vid-on.attachment-content .attachment-thumb a > span.attachment-thumbnail-icon { display: none !important }
+#attachment_thumbnails .uhub-att-new { display: none !important }
 /* Visualizador Unificado BETA: alinhado ao sistema visual AUI do Jira */
 #uhub-beta-viewer { position: fixed; inset: 0; z-index: 2147483100; background: rgba(0, 0, 0, 0.86); color: #172b4d; display: flex; flex-direction: column; font-family: inherit; font-size: 13px; transition: background 0.16s ease }
 #uhub-beta-viewer.bv-light-bg { background: rgba(255, 255, 255, 0.88) }
@@ -623,6 +693,40 @@ html.uhub-att #attachmentmodule #attachment_thumbnails .uhub-vidp::after { conte
 #uhub-beta-viewer .bv-sbs-scroll img { will-change: transform; transform: translateZ(0) }
 #uhub-beta-viewer:not(.bv-light-bg) .bv-sbs-scroll img { display: inline-block; max-width: none; height: auto; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55); background: repeating-conic-gradient(#262626 0% 25%, #1a1a1a 0% 50%) 50% / 16px 16px }
 #uhub-beta-viewer.bv-light-bg .bv-sbs-scroll img { display: inline-block; max-width: none; height: auto; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16); background: repeating-conic-gradient(#f0f0f0 0% 25%, #ffffff 0% 50%) 50% / 16px 16px }
+/* Lado a lado minimalista: sem molduras nem cantos arredondados, divisoria fina, cabecalho discreto, fundo limpo */
+#uhub-beta-viewer .bv-sbs-grid { gap: 0 }
+#uhub-beta-viewer .bv-sbs-pane { border: 0; border-radius: 0 }
+#uhub-beta-viewer .bv-sbs-pane + .bv-sbs-pane { border-left: 1px solid var(--uhub-border) }
+#uhub-beta-viewer .bv-sbs-head { min-height: 32px; padding: 0 8px 0 12px; background: var(--uhub-bg-subtle); border-bottom: 1px solid var(--uhub-border) }
+#uhub-beta-viewer .bv-sbs-head strong { font-size: 12.5px; font-weight: 600 }
+#uhub-beta-viewer .bv-sbs-rm { width: 22px; height: 22px; border: 0; border-radius: 4px; background: transparent; color: var(--uhub-text-muted) }
+#uhub-beta-viewer .bv-sbs-rm:hover { background: #ffebe6; color: #bf2600 }
+#uhub-beta-viewer .bv-sbs-scroll, #uhub-beta-viewer.bv-light-bg .bv-sbs-scroll { background: transparent }
+#uhub-beta-viewer:not(.bv-light-bg) .bv-sbs-scroll img { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12) }
+#uhub-beta-viewer.bv-light-bg .bv-sbs-scroll img { box-shadow: 0 0 0 1px rgba(9, 30, 66, 0.13) }
+/* PDF no visualizador: paginas de cima para baixo + navegador de paginas */
+#uhub-beta-viewer .bv-single-wrap.bv-wrap-c { margin: 0; width: max-content; min-width: 100% }
+#uhub-beta-viewer .bv-pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 14px; user-select: none; -webkit-user-select: none }
+#uhub-beta-viewer .bv-pdf-page { position: relative; flex: 0 0 auto; background: #ffffff; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45) }
+#uhub-beta-viewer .bv-stage img { -webkit-user-drag: none; user-select: none }
+#uhub-beta-viewer .bv-stage.bv-pannable { cursor: grab }
+#uhub-beta-viewer .bv-stage.bv-panning, #uhub-beta-viewer .bv-stage.bv-panning * { cursor: grabbing !important; user-select: none }
+#uhub-beta-viewer.bv-light-bg .bv-pdf-page { box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(9, 30, 66, 0.12) }
+#uhub-beta-viewer .bv-pdf-page > span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #a5adba; font-size: 28px; font-weight: 600 }
+#uhub-beta-viewer .bv-pdf-done > span { display: none }
+#uhub-beta-viewer .bv-pdf-page canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100% }
+#uhub-beta-viewer .bv-pdf-msg { padding: 40px 0; font-size: 13px; color: #ffffff }
+#uhub-beta-viewer.bv-light-bg .bv-pdf-msg { color: #172b4d }
+#uhub-beta-viewer .bv-pdf-nav { position: fixed; left: var(--bv-nav-x, 50%); top: var(--bv-nav-y, calc(100vh - 150px)); transform: translateX(-50%); z-index: 35; pointer-events: none }
+#uhub-beta-viewer .bv-pdf-navbox { display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 6px; border-radius: 18px; background: var(--uhub-bg); color: #172b4d; border: 1px solid var(--uhub-border); box-shadow: 0 4px 8px -2px rgba(9, 30, 66, 0.25), 0 0 1px rgba(9, 30, 66, 0.31); pointer-events: auto; font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap }
+#uhub-beta-viewer .bv-pdf-navbox > button { width: 28px; height: 28px }
+#uhub-beta-viewer .bv-pdf-navbox .bv-pdf-cur { width: 40px; height: 26px; border: 2px solid var(--uhub-border); border-radius: 3px; background: var(--uhub-bg-subtle); color: #172b4d; outline: none }
+#uhub-beta-viewer .bv-pdf-navbox .bv-pdf-cur:hover { background: var(--uhub-bg) }
+#uhub-beta-viewer .bv-pdf-navbox .bv-pdf-cur:focus { border-color: #4c9aff; background: var(--uhub-bg) }
+#uhub-beta-viewer .bv-pdf-navbox button { appearance: none; border: 0; background: transparent; color: #42526e; width: 26px; height: 26px; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; cursor: pointer }
+#uhub-beta-viewer .bv-pdf-navbox button:hover:not(:disabled) { background: #deebff; color: #044099 }
+#uhub-beta-viewer .bv-pdf-navbox button:disabled { opacity: 0.35; cursor: default }
+#uhub-beta-viewer .bv-pdf-cur { width: 38px; height: 24px; box-sizing: border-box; padding: 0; text-align: center; border: 1px solid var(--uhub-border); border-radius: 4px; background: var(--uhub-bg-subtle); color: #172b4d; font: inherit }
 /* Modo 4: Alternar (Blink test) */
 #uhub-beta-viewer .bv-flip-wrap { margin: 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100% }
 #uhub-beta-viewer:not(.bv-light-bg) .bv-flip-stage { position: relative; cursor: pointer; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55); background: repeating-conic-gradient(#262626 0% 25%, #1a1a1a 0% 50%) 50% / 16px 16px }
@@ -757,11 +861,11 @@ html.uhub-wide dd.uhub-due-dd > #due-date { width: auto !important; flex: 0 1 au
 #uhub-review-chip:hover { background: #cce0ff }
 /* Faixa do modo revisao: Prioridade · Responsavel · Solicitante · Ficar pronto */
 #uhub-review-meta { display: none }
-html.uhub-wide #uhub-review-meta:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; grid-column: 1 / -1; min-width: 0; margin: 0 0 16px; padding: 9px 48px 9px 14px; position: relative; background: var(--uhub-bg-subtle); border: 1px solid var(--uhub-border); border-radius: 6px; box-sizing: border-box; font-size: 14px; line-height: 20px; color: #172b4d; container: uhubrm / inline-size }
+html.uhub-wide #uhub-review-meta:not([hidden]) { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px 12px; grid-column: 1 / -1; min-width: 0; margin: 0 0 16px; padding: 9px 48px 9px 14px; position: relative; background: var(--uhub-bg-subtle); border: 1px solid var(--uhub-border); border-radius: 6px; box-sizing: border-box; font-size: 14px; line-height: 20px; color: #172b4d; container: uhubrm / inline-size }
 html.uhub-wide.uhub-cstack #uhub-review-meta { order: -1 }
 #uhub-review-meta .rm-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; white-space: nowrap }
 #uhub-review-meta .rm-label { flex: 0 0 auto; font-size: 12px; color: var(--uhub-text-muted) }
-@container uhubrm (max-width: 935px) {
+@container uhubrm (max-width: 1180px) {
   #uhub-review-meta .rm-item { flex-direction: column; align-items: flex-start; gap: 8px }
   #uhub-review-meta .rm-label { font-size: 11px; font-weight: 600; line-height: 1 }
 }
@@ -777,6 +881,8 @@ html.uhub-wide.uhub-cstack #uhub-review-meta { order: -1 }
 #uhub-review-meta .rm-val > .active { flex: 1 1 100%; width: 100%; min-width: 0; margin: 0 !important; padding: 0 !important; background: transparent !important; border: 0 !important }
 #uhub-review-meta .active form.aui { margin: 0 !important } /* o Jira alarga o formulario (-5px/-30px): na faixa ele fica exatamente no espaco do campo */
 #uhub-review-meta .rm-due #due-date { min-width: 100px }
+#uhub-review-meta .rm-item { flex: 0 0 auto }
+#uhub-review-meta .rm-due .rm-val { flex-wrap: nowrap }
 #uhub-review-meta .rm-due .rm-val > .active { flex: 0 0 100px; width: 100px; min-width: 0 }
 #uhub-review-meta .rm-due .active .text { width: 100% !important; min-width: 0; box-sizing: border-box }
 #uhub-review-meta .rm-val img { flex: 0 0 auto; vertical-align: middle }
@@ -1584,9 +1690,9 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     '.issuePanelWrapper',
   ];
   const ACTIVE_TAB_SEC = 1;
-  const AUTO_DEFAULTS = { autoRefresh: true, autoRefreshSec: 15, notifyEnabled: true, notifyWhenFocused: true, reminderEnabled: true, reminderMin: 30, attProportional: true, attGroup: 'stack', attSens: 'normal', dueReminder: true, dueHour: 8, sendCheck: true, narrowLayout: 'drawer', betaViewer: true, sharedPolling: true };
+  const AUTO_DEFAULTS = { autoRefresh: true, autoRefreshSec: 15, notifyEnabled: true, notifyWhenFocused: true, notifyAutoSec: 30, reminderEnabled: true, reminderMin: 30, attProportional: true, attGroup: 'stack', attSens: 'normal', dueReminder: true, dueHour: 8, sendCheck: true, narrowLayout: 'drawer', betaViewer: true, sharedPolling: true };
   const AUTO_CHOICES = { attGroup: ['off', 'stack', 'frame'], attSens: ['estrito', 'normal', 'amplo'], narrowLayout: ['drawer', 'stack'] };
-  const AUTO_LIMITS = { autoRefreshSec: { min: 15, max: 300 }, reminderMin: { min: 5, max: 120 }, dueHour: { min: 0, max: 23 } };
+  const AUTO_LIMITS = { autoRefreshSec: { min: 15, max: 300 }, reminderMin: { min: 5, max: 120 }, notifyAutoSec: { min: 5, max: 120 }, dueHour: { min: 0, max: 23 } };
   const MAX_BACKOFF_SEC = 300;
   function isTabVisible() {
     return document.visibilityState === 'visible';
@@ -1628,6 +1734,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     autoRefreshSec: loadPref('autoRefreshSec'),
     notifyEnabled: loadPref('notifyEnabled'),
     notifyWhenFocused: loadPref('notifyWhenFocused'),
+    notifyAutoSec: loadPref('notifyAutoSec'),
     reminderEnabled: loadPref('reminderEnabled'),
     reminderMin: loadPref('reminderMin'),
     attProportional: loadPref('attProportional'),
@@ -1945,18 +2052,32 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       }
     }, 250);
   }
-  function sendSystemNotification(title, text, onclick) {
+  function sendSystemNotification(title, text, onclick, opts) {
+    const sticky = !!(opts && opts.sticky);
+    const autoMs = Math.max(5, Number(prefs.notifyAutoSec) || 30) * 1000;
     if (typeof GM_notification === 'function') {
-      GM_notification({ title, text, silent: false, timeout: 15000, onclick });
+      try {
+        GM_notification({ title, text, silent: false, timeout: sticky ? 0 : autoMs, onclick });
+      } catch (e) { console.warn('[Jira layout] notificação:', e); }
       return;
     }
     if (!('Notification' in window)) return;
     const show = () => {
-      const n = new Notification(title, { body: text });
-      n.onclick = () => { onclick(); n.close(); };
+      try {
+        const n = new Notification(title, sticky ? { body: text, requireInteraction: true } : { body: text });
+        n.onclick = () => { onclick(); n.close(); };
+        if (!sticky) setTimeout(() => { try { n.close(); } catch (e) { /* ja fechada */ } }, autoMs);
+      } catch (e) { console.warn('[Jira layout] notificação:', e); }
     };
     if (Notification.permission === 'granted') show();
-    else if (Notification.permission !== 'denied') Notification.requestPermission().then((p) => { if (p === 'granted') show(); });
+    else if (Notification.permission !== 'denied') {
+      try {
+        let handled = false;
+        const go = (p) => { if (handled) return; handled = true; if (p === 'granted') show(); };
+        const r = Notification.requestPermission(go);
+        if (r && typeof r.then === 'function') r.then(go).catch((e) => console.warn('[Jira layout] notificação:', e));
+      } catch (e) { console.warn('[Jira layout] notificação:', e); }
+    }
   }
   // Titulo da issue (summary) para identificar a notificacao
   function issueTitleForNotif() {
@@ -1986,7 +2107,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       const names = [...new Set(toNotify.map((c) => c.authorDisplay))];
       text = `${toNotify.length} comentários: ${names.slice(0, 4).join(', ')}${names.length > 4 ? '…' : ''}`;
     }
-    sendSystemNotification(title, text, () => focusComment(first.id));
+    sendSystemNotification(title, text, () => focusComment(first.id), { sticky: true });
   }
   // ---------- estado / status ----------
   function setStatus(text) {
@@ -2862,6 +2983,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       extrasState.updated = rest.updated;
       extrasState.att = ids ? new Set(ids) : null;
       extrasState.due = rest.due;
+      try { renderWaiting(); } catch (e) { console.warn('[Jira layout] tag de espera:', e); }
       return;
     }
     const added = rest.att && extrasState.att ? rest.att.filter((a) => !extrasState.att.has(a.id)) : [];
@@ -2872,6 +2994,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     if (!changed && !retry) return;
     const prevDue = extrasState.due;
     extrasState.updated = rest.updated;
+    try { renderWaiting(); } catch (e) { console.warn('[Jira layout] tag de espera:', e); }
     if (ids) extrasState.att = new Set(ids);
     extrasState.due = rest.due;
     // 1) tela: troca so Anexos e Datas, e so se de fato mudaram. Com o visualizador de anexos aberto, deixa
@@ -3405,6 +3528,38 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     n2.input.disabled = !prefs.notifyEnabled;
     n2.input.addEventListener('change', () => savePref('notifyWhenFocused', n2.input.checked));
     wrap.appendChild(n2.row);
+    try {
+      const nAuto = mk('div');
+      nAuto.className = 'sp-field';
+      const nLbl = mk('label');
+      const nLblText = mk('span');
+      nLblText.textContent = 'Fechar outras notificações após';
+      const nVal = mk('span');
+      nVal.className = 'sp-val';
+      nVal.textContent = `${prefs.notifyAutoSec}s`;
+      nLbl.appendChild(nLblText);
+      nLbl.appendChild(nVal);
+      nAuto.input = mk('input');
+      nAuto.input.type = 'range';
+      nAuto.input.dataset.key = 'notifyAutoSec';
+      nAuto.input.min = AUTO_LIMITS.notifyAutoSec.min;
+      nAuto.input.max = AUTO_LIMITS.notifyAutoSec.max;
+      nAuto.input.step = 5;
+      nAuto.input.value = prefs.notifyAutoSec;
+      nAuto.input.disabled = !prefs.notifyEnabled;
+      nAuto.input.addEventListener('input', () => { nVal.textContent = `${nAuto.input.value}s`; });
+      nAuto.input.addEventListener('change', () => {
+        savePref('notifyAutoSec', Number(nAuto.input.value));
+        nVal.textContent = `${prefs.notifyAutoSec}s`;
+      });
+      const nHint = mk('div');
+      nHint.className = 'sp-hint';
+      nHint.textContent = 'Vale para status, anexos, prazos e lembretes (padrão 30s). Comentários novos esperam você dispensar, conforme a configuração de notificações do seu sistema.';
+      nAuto.appendChild(nLbl);
+      nAuto.appendChild(nAuto.input);
+      nAuto.appendChild(nHint);
+      wrap.appendChild(nAuto);
+    } catch (e) { console.warn('[Jira layout] ajuste de notificações:', e); }
     const r1 = buildCheckboxRow('reminderEnabled', 'Lembrete de não lidos (repete até você ler)');
     r1.input.addEventListener('change', () => {
       savePref('reminderEnabled', r1.input.checked);
@@ -3507,6 +3662,13 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     });
     const n2 = panel.querySelector('.sp-check input[data-key="notifyWhenFocused"]');
     if (n2) n2.disabled = !prefs.notifyEnabled;
+    const nA = panel.querySelector('input[data-key="notifyAutoSec"]');
+    if (nA) {
+      nA.disabled = !prefs.notifyEnabled;
+      nA.value = prefs.notifyAutoSec;
+      const nV = nA.closest('.sp-field') && nA.closest('.sp-field').querySelector('.sp-val');
+      if (nV) nV.textContent = `${prefs.notifyAutoSec}s`;
+    }
     const range = panel.querySelector('input[data-key="autoRefreshSec"]');
     if (range) {
       range.disabled = !prefs.autoRefresh;
@@ -6014,6 +6176,37 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     waiting.readAt = waiting.id ? getReadAt(waiting.id) : 0;
     renderWaiting();
   }
+  // Tag "Aguardando você": aparece por 1 min, só na 1ª vez que cada modificação da issue (data "updated" do Jira) é vista. Fica gravada: recarregar a página não a traz de volta.
+  const waitingPill = { key: '', stamp: '', shownAt: 0 };
+  const WAITING_PILL_MS = 60000;
+  const WAITING_SEEN_KEY = 'uhub-waiting-seen';
+  function waitingPillAllowed() {
+    try {
+      const key = state.issueKey || getIssueKey();
+      const stamp = (extrasState.updated === null || extrasState.updated === undefined) ? '' : String(extrasState.updated);
+      if (!key || !stamp) return false;
+      if (waitingPill.key === key && waitingPill.stamp === stamp) {
+        return waitingPill.shownAt > 0 && Date.now() - waitingPill.shownAt < WAITING_PILL_MS;
+      }
+      let seen = {};
+      try { seen = JSON.parse(GM_getValue(WAITING_SEEN_KEY, '{}')) || {}; } catch (e) { seen = {}; }
+      waitingPill.key = key;
+      waitingPill.stamp = stamp;
+      if (seen[key] === stamp) { waitingPill.shownAt = 0; return false; }
+      seen[key] = stamp;
+      const keys = Object.keys(seen);
+      if (keys.length > 200) keys.slice(0, keys.length - 200).forEach((k) => delete seen[k]);
+      GM_setValue(WAITING_SEEN_KEY, JSON.stringify(seen));
+      waitingPill.shownAt = Date.now();
+      setTimeout(() => {
+        try { renderWaiting(); } catch (e) { console.warn('[Jira layout] tag de espera:', e); }
+      }, WAITING_PILL_MS + 500);
+      return true;
+    } catch (e) {
+      console.warn('[Jira layout] tag de espera:', e);
+      return false;
+    }
+  }
   function fmtDateShort(ts) {
     return new Date(ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
@@ -6032,7 +6225,9 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       setTitleLabel('');
       return;
     }
-    if (header && !pill) {
+    const showPill = waitingPillAllowed();
+    if (!showPill && pill) { pill.remove(); pill = null; }
+    if (header && !pill && showPill) {
       pill = mk('span');
       pill.id = 'uhub-waiting';
       const title = gid('uhub-sidebar-title');
@@ -6310,7 +6505,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       ph.title = `Sem permissão para excluir${info && info.author ? ` (enviado por ${info.author})` : ''}`;
       ph.setAttribute('aria-label', ph.title);
       // SVG proprio: a fonte de icones do Jira nem sempre carrega (ficava um quadrado vazio)
-      ph.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6 1.5h4a1 1 0 0 1 1 1V3h2.5a.75.75 0 0 1 0 1.5h-.6l-.6 8.6a1.75 1.75 0 0 1-1.75 1.6h-5.1a1.75 1.75 0 0 1-1.75-1.6L3.1 4.5h-.6a.75.75 0 0 1 0-1.5H5v-.5a1 1 0 0 1 1-1zM6.5 3h3v-.25h-3z"/></svg>';
+      ph.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4h11M6 4V2.8c0-.4.3-.8.8-.8h2.4c.5 0 .8.4.8.8V4M4 4l.6 8.7c.1.7.6 1.3 1.4 1.3h4c.8 0 1.3-.6 1.4-1.3L12 4M6.7 6.8v4.4M9.3 6.8v4.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       dt.appendChild(ph);
     } else if (canDelete && ph) ph.remove();
     let b = dt.querySelector('.uhub-att-cite') || li.querySelector('.uhub-att-cite');
@@ -6321,6 +6516,22 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       b.innerHTML = ICON_CITE;
       dt.appendChild(b);
     }
+    try {
+      let rb = dt.querySelector('.uhub-att-rename') || li.querySelector('.uhub-att-rename');
+      if (canDelete && !rb) {
+        rb = mk('button');
+        rb.type = 'button';
+        rb.className = 'uhub-att-rename';
+        rb.innerHTML = ICON_RENAME;
+        dt.appendChild(rb);
+      } else if (!canDelete && rb) { rb.remove(); rb = null; }
+      if (rb) {
+        const rt = 'Renomear este anexo';
+        if (rb.title !== rt) rb.title = rt;
+        const ra = `Renomear ${ref.file}`;
+        if (rb.getAttribute('aria-label') !== ra) rb.setAttribute('aria-label', ra);
+      }
+    } catch (e) { attRenameLog(e); }
     const title = 'Citar este anexo no novo comentário';
     if (b.title !== title) b.title = title;
     const aria = `Citar ${ref.file} no novo comentário`;
@@ -6328,6 +6539,263 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     syncAttachmentInspectButton(li, ref);
   }
   const ICON_EYE = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="8" r="2.1" stroke="currentColor" stroke-width="1.4"/></svg>';
+  // ---------- Renomear anexo ---------- O Jira nao tem "renomear": o script le o arquivo em memoria (sem download),
+  // sobe com o nome novo, confere e so entao apaga o original. Se algo falhar, o original continua intacto.
+  const ICON_RENAME = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10.6 2.4a1.6 1.6 0 0 1 2.3 2.3L5.4 12.2 2.2 13l.8-3.2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M9.4 3.6l2.3 2.3" stroke="currentColor" stroke-width="1.4"/></svg>';
+  const attRenaming = new Set();
+  function attRenameLog(e) { try { diag({ kind: 'rename', err: String((e && e.message) || e) }); } catch {} }
+  function attSplitName(file) {
+    const i = file.lastIndexOf('.');
+    return i > 0 && i < file.length - 1 ? [file.slice(0, i), file.slice(i)] : [file, ''];
+  }
+  function attCleanName(s) {
+    return String(s || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim();
+  }
+  function attEndRename(li) {
+    try {
+      const w = li.querySelector('.uhub-att-rn');
+      if (w) w.remove();
+      const tl = li.querySelector('a.attachment-title');
+      if (tl) tl.style.removeProperty('display');
+    } catch (e) { attRenameLog(e); }
+  }
+  function attStartRename(li, ref) {
+    try {
+      if (attRenaming.has(ref.id) || li.querySelector('.uhub-att-rn')) return;
+      const tl = li.querySelector('a.attachment-title');
+      if (!tl) { showToast('Não foi possível renomear este anexo', 3000); return; }
+      const parts = attSplitName(ref.file);
+      const wrap = mk('span');
+      wrap.className = 'uhub-att-rn';
+      const inp = mk('input');
+      inp.type = 'text';
+      inp.className = 'uhub-att-rn-input';
+      inp.value = parts[0];
+      inp.spellcheck = false;
+      inp.setAttribute('aria-label', 'Novo nome do anexo');
+      const sfx = mk('span');
+      sfx.className = 'uhub-att-rn-ext';
+      sfx.textContent = parts[1];
+      wrap.appendChild(inp);
+      wrap.appendChild(sfx);
+      tl.style.setProperty('display', 'none', 'important');
+      tl.after(wrap);
+      let finished = false;
+      const cancel = () => { if (finished) return; finished = true; attEndRename(li); };
+      inp.addEventListener('keydown', (ev) => {
+        ev.stopPropagation();
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          if (finished) return;
+          finished = true;
+          attCommitRename(li, ref, inp.value, parts[1]);
+        } else if (ev.key === 'Escape') { ev.preventDefault(); cancel(); }
+      });
+      inp.addEventListener('blur', () => { if (!document.hasFocus()) return; setTimeout(cancel, 150); });
+      inp.focus();
+      inp.select();
+    } catch (e) { attRenameLog(e); attEndRename(li); }
+  }
+  async function attRenameFile(ref, newName) {
+    const key = getIssueKey() || state.issueKey;
+    if (!key) return { ok: false, why: 'Não foi possível identificar a issue' };
+    let blob = null;
+    try {
+      const g = await fetch(new URL(ref.href, location.href).href, { credentials: 'same-origin' });
+      if (!g.ok) return { ok: false, why: 'Não foi possível ler o arquivo' };
+      blob = await g.blob();
+    } catch (e) { attRenameLog(e); return { ok: false, why: 'Não foi possível ler o arquivo' }; }
+    let newId = '';
+    try {
+      const fd = new FormData();
+      fd.append('file', new File([blob], newName, { type: blob.type || 'application/octet-stream' }), newName);
+      const up = await fetch(`${jiraBaseUrl()}/rest/api/2/issue/${encodeURIComponent(key)}/attachments`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'X-Atlassian-Token': 'no-check' },
+        body: fd,
+      });
+      if (up.status === 403) return { ok: false, why: 'Sem permissão para anexar nesta issue' };
+      if (up.status === 401) return { ok: false, why: 'Sessão expirada — recarregue a página' };
+      if (!up.ok) return { ok: false, why: 'O Jira recusou o novo anexo' };
+      const arr = await up.json();
+      newId = String((arr && arr[0] && arr[0].id) || '');
+    } catch (e) { attRenameLog(e); return { ok: false, why: 'Não foi possível enviar o arquivo renomeado' }; }
+    if (!newId) return { ok: false, why: 'O Jira não confirmou o novo anexo' };
+    const del = await deleteAttachment(ref.id);
+    if (del !== 'ok') {
+      await deleteAttachment(newId);
+      return { ok: false, why: del === 'forbidden' ? 'Sem permissão para excluir o original' : 'Não foi possível excluir o original' };
+    }
+    return { ok: true, newId };
+  }
+  // Atualiza o anexo na tela na hora (nome, links e ids), para nao esperar o Jira recarregar a lista
+  function attApplyRenamed(li, oldRef, newId, newName) {
+    try {
+      const oldId = oldRef.id;
+      const encOld = encodeURIComponent(oldRef.file);
+      const encNew = encodeURIComponent(newName);
+      const els = [li].concat(Array.from(li.querySelectorAll('*')));
+      els.forEach((el) => {
+        Array.from(el.attributes).forEach((a) => {
+          const v = a.value;
+          let n = v;
+          if (a.name === 'id') n = v === `del_${oldId}` ? `del_${newId}` : v;
+          else if (v === oldId && /(^|-)id$/i.test(a.name)) n = newId;
+          else if (v === oldRef.file) n = newName;
+          else {
+            n = v.split(`/secure/attachment/${oldId}/`).join(`/secure/attachment/${newId}/`);
+            if (n !== v) n = n.split(encOld).join(encNew);
+            n = n.split(`deleteAttachmentId=${oldId}`).join(`deleteAttachmentId=${newId}`);
+          }
+          if (n !== v) el.setAttribute(a.name, n);
+        });
+      });
+      const tl = li.querySelector('a.attachment-title');
+      if (tl) tl.textContent = newName;
+      attSel.delete(oldId);
+      addAttachmentCiteButton(li);
+      syncAttSelection();
+    } catch (e) { attRenameLog(e); }
+  }
+  async function attCommitRename(li, ref, typed, ext, onDone) {
+    attEndRename(li);
+    try {
+      let base = attCleanName(typed);
+      if (ext && base.toLowerCase().endsWith(ext.toLowerCase())) base = attCleanName(base.slice(0, base.length - ext.length));
+      const newName = base + ext;
+      if (!base || newName === ref.file) return;
+      const clash = Array.from(qa('#attachment_thumbnails li.attachment-content')).some((x) => { const r = attachmentRef(x); return !!r && r.id !== ref.id && r.file === newName; });
+      if (clash) { showToast('Já existe um anexo com esse nome', 3000); return; }
+      const used = Array.from(qa(`[href*="/secure/attachment/${ref.id}/"], [src*="/secure/attachment/${ref.id}/"]`)).some((el) => !el.closest('#attachmentmodule, #uhub-beta-viewer'));
+      if (used && !window.confirm('Este anexo é usado em comentários ou na descrição. Depois de renomear, essas referências deixam de funcionar. Renomear mesmo assim?')) return;
+      attRenaming.add(ref.id);
+      li.classList.add('uhub-att-busy');
+      showToast('Renomeando…', 8000);
+      const res = await attRenameFile(ref, newName);
+      if (!res.ok) { showToast(res.why || 'Não foi possível renomear', 4000); return; }
+      const cur = attLiById(ref.id);
+      if (cur) attApplyRenamed(cur, ref, res.newId, newName);
+      showToast(`Renomeado para “${newName}”`, 2500);
+      if (onDone) { try { onDone({ ok: true, newId: res.newId, newName }); } catch (e) { attRenameLog(e); } }
+    } catch (e) {
+      attRenameLog(e);
+      showToast('Não foi possível renomear', 3000);
+    } finally {
+      attRenaming.delete(ref.id);
+      li.classList.remove('uhub-att-busy');
+    }
+  }
+  // ---------- Botoes Renomear / Baixar / Deletar no Visualizador Beta ---------- Num arquivo de dentro de um zip,
+  // as acoes valem para o zip inteiro (como o Citar).
+  const ICON_DL = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v8M4.8 7.2 8 10.4l3.2-3.2M2.5 13h11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const ICON_TRASH = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4h11M6 4V2.8c0-.4.3-.8.8-.8h2.4c.5 0 .8.4.8.8V4M4 4l.6 8.7c.1.7.6 1.3 1.4 1.3h4c.8 0 1.3-.6 1.4-1.3L12 4M6.7 6.8v4.4M9.3 6.8v4.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function bvActLog(e) { try { diag({ kind: 'bv-act', err: String((e && e.message) || e) }); } catch {} }
+  function bvActTarget(item) {
+    const li = attLiById(String(item.zip || item.id));
+    const ref = li ? attachmentRef(li) : null;
+    return ref ? { li, ref } : null;
+  }
+  function bvDownloadItem(item) {
+    try {
+      const tg = bvActTarget(item);
+      const href = tg ? tg.ref.href : item.href;
+      const file = tg ? tg.ref.file : item.file;
+      if (!href) { showToast('Não foi possível baixar este arquivo', 3000); return; }
+      const a = mk('a');
+      a.href = new URL(href, location.href).href;
+      a.download = file;
+      a.rel = 'noopener';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      showToast(`Baixando ${file}`, 1800);
+    } catch (e) { bvActLog(e); showToast('Não foi possível baixar este arquivo', 3000); }
+  }
+  function bvAfterDelete(delId) {
+    try {
+      const gone = (it) => String(it.zip || it.id) === delId;
+      const all = bv.items || [];
+      const rest = all.filter((it) => !gone(it));
+      if (!rest.length) { closeBetaViewer(); return; }
+      const cur = all.findIndex((it) => it.id === bv.activeId);
+      let next = rest.find((it) => all.indexOf(it) > cur);
+      if (!next) next = rest[rest.length - 1];
+      bv.items = rest;
+      bvSelectImage(next.id);
+    } catch (e) { bvActLog(e); }
+  }
+  function bvDeleteItem(item) {
+    try {
+      const tg = bvActTarget(item);
+      if (!tg) { showToast('Não foi possível identificar o anexo', 3000); return; }
+      if (!tg.li.querySelector('.attachment-delete a[href]')) { showToast('Sem permissão para excluir este anexo', 3000); return; }
+      const delId = tg.ref.id;
+      confirmDeleteAttachments([delId], {
+        title: item.zip ? 'Excluir o zip deste arquivo?' : 'Excluir este anexo?',
+        names: [tg.ref.file],
+        sub: item.zip ? 'Este arquivo está dentro de um zip: o zip inteiro será excluído.' : '',
+        onDone: (result) => { if (result && result.ok) bvAfterDelete(delId); },
+      });
+    } catch (e) { bvActLog(e); }
+  }
+  function bvAfterRename(item, res) {
+    try {
+      if (!res || !res.ok) return;
+      if (item.zip) { closeBetaViewer(); return; }
+      openBetaViewer(res.newId, res.newName);
+    } catch (e) { bvActLog(e); }
+  }
+  function bvStartRename(titleEl, item) {
+    try {
+      const tg = bvActTarget(item);
+      if (!tg) { showToast('Não foi possível identificar o anexo', 3000); return; }
+      if (!tg.li.querySelector('.attachment-delete a[href]')) { showToast('Sem permissão para renomear este anexo', 3000); return; }
+      if (!titleEl || !titleEl.parentNode || attRenaming.has(tg.ref.id) || titleEl.parentNode.querySelector('.bv-rn')) return;
+      const parts = attSplitName(tg.ref.file);
+      const wrap = mk('div');
+      wrap.className = 'bv-rn';
+      const inp = mk('input');
+      inp.type = 'text';
+      inp.className = 'bv-rn-input';
+      inp.value = parts[0];
+      inp.spellcheck = false;
+      inp.setAttribute('aria-label', item.zip ? 'Novo nome do zip' : 'Novo nome do arquivo');
+      const sfx = mk('span');
+      sfx.className = 'bv-rn-ext';
+      sfx.textContent = parts[1];
+      wrap.appendChild(inp);
+      wrap.appendChild(sfx);
+      let finished = false;
+      const guard = (ev) => {
+        if (ev.target !== inp) return;
+        ev.stopPropagation();
+        if (ev.key === 'Enter') { ev.preventDefault(); done(true); }
+        else if (ev.key === 'Escape') { ev.preventDefault(); done(false); }
+      };
+      const done = (commit) => {
+        if (finished) return;
+        finished = true;
+        window.removeEventListener('keydown', guard, true);
+        const typed = inp.value;
+        wrap.remove();
+        titleEl.style.removeProperty('visibility');
+        if (commit) attCommitRename(tg.li, tg.ref, typed, parts[1], (res) => bvAfterRename(item, res));
+      };
+      window.addEventListener('keydown', guard, true);
+      inp.addEventListener('blur', () => { if (!document.hasFocus()) return; setTimeout(() => done(false), 150); });
+      const tw = Math.min(Math.max(titleEl.offsetWidth, 220), Math.max(120, titleEl.parentNode.clientWidth - titleEl.offsetLeft));
+      wrap.style.left = `${titleEl.offsetLeft}px`;
+      wrap.style.top = `${titleEl.offsetTop}px`;
+      wrap.style.width = `${tw}px`;
+      wrap.style.height = `${titleEl.offsetHeight}px`;
+      titleEl.style.visibility = 'hidden';
+      titleEl.after(wrap);
+      inp.focus();
+      inp.select();
+    } catch (e) { bvActLog(e); }
+  }
   // Previa de PDF: 1a pagina desenhada no card (pdf.js), reaproveitada entre atualizacoes para nao piscar
   const pdfCache = new Map();
   let pdfWorkerReady = false, pdfQueue = Promise.resolve(), pdfErrs = 0;
@@ -6407,6 +6875,8 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
   }
   // Previa de video: 1o quadro do video como thumb (mesmo estilo do PDF), reaproveitada entre atualizacoes para nao piscar
   const vidCache = new Map();
+  const vidPos = new Map();
+  let vidHot = null;
   let vidErrs = 0;
   function vidWarn(e) {
     try { if (vidErrs++ < 3) diag({ kind: 'video-preview-error', msg: String(e && e.message || e) }); } catch {}
@@ -6451,6 +6921,15 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
           vidWarn(new Error('video sem previa: ' + ref.file));
         }, { once: true });
         box.appendChild(v);
+        const bar = mk('i');
+        bar.className = 'uhub-vidp-bar';
+        box.appendChild(bar);
+        v.addEventListener('timeupdate', () => {
+          try {
+            bar.style.width = (v.duration && v.currentTime > 0.5) ? `${Math.min(100, (v.currentTime / v.duration) * 100)}%` : '0';
+            if (vidHot && vidHot.v === v) vidPos.set(ref.id, v.currentTime);
+          } catch {}
+        });
         vidCache.set(ref.id, st);
         v.src = (ref.href || '') + '#t=0.1';
       }
@@ -6462,6 +6941,44 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       li.classList.add('uhub-vid-on');
     } catch (e) { vidWarn(e); }
   }
+  function vidStop() {
+    if (!vidHot) return;
+    clearTimeout(vidHot.t);
+    try { vidHot.v.pause(); vidHot.box.classList.remove('uhub-vidp-play'); } catch {}
+    vidHot = null;
+  }
+  document.addEventListener('mouseover', (ev) => {
+    try {
+      if (document.documentElement.classList.contains('uhub-beta-open')) { vidStop(); return; }
+      const li = ev.target && ev.target.closest ? ev.target.closest('#attachment_thumbnails li.uhub-vid-on') : null;
+      if (vidHot && vidHot.li === li) return;
+      vidStop();
+      if (!li || !attOn()) return;
+      const ref = attachmentRef(li);
+      const st = ref ? vidCache.get(ref.id) : null;
+      const v = st && st.ready && !st.failed ? st.box.querySelector('video') : null;
+      if (!v) return;
+      const hot = { li, v, box: st.box, id: ref.id, t: 0 };
+      vidHot = hot;
+      hot.t = setTimeout(() => {
+        try {
+          if (vidHot !== hot || document.documentElement.classList.contains('uhub-beta-open')) return;
+          const p = vidPos.get(hot.id);
+          if (p > 0.5 && Math.abs(v.currentTime - p) > 0.5) v.currentTime = p;
+          v.muted = true;
+          v.loop = true;
+          const pr = v.play();
+          if (pr && pr.catch) pr.catch(() => {});
+          hot.box.classList.add('uhub-vidp-play');
+        } catch (e) { vidWarn(e); }
+      }, 300);
+    } catch (e) { vidWarn(e); }
+  }, true);
+  document.addEventListener('mouseout', (ev) => {
+    if (vidHot && !(ev.relatedTarget && vidHot.li.contains(ev.relatedTarget))) vidStop();
+  }, true);
+  window.addEventListener('blur', vidStop);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) vidStop(); });
   function isImageAttachmentLi(li, ref) {
     if (!li || !ref) return false;
     if (li.getAttribute('data-attachment-type') === 'image') return true;
@@ -6477,7 +6994,8 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     try { syncPdfPreview(li, ref); } catch (e) { pdfWarn('pdf-preview-error', e); }
     try { syncVideoPreview(li, ref); } catch (e) { vidWarn(e); }
     const isVidFile = /\.(mp4|m4v|mov|webm|ogv)$/i.test(ref.file || '');
-    const showable = isZip ? !!(zz.entries && zz.entries.length) : (isImageAttachmentLi(li, ref) || isVidFile);
+    const isPdfFile = /\.pdf$/i.test(ref.file || '');
+    const showable = isZip ? !!(zz.entries && zz.entries.length) : (isImageAttachmentLi(li, ref) || isVidFile || isPdfFile);
     if (!prefs.betaViewer || !attOn() || !showable) {
       if (btn) btn.remove();
       return;
@@ -6489,12 +7007,12 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       btn.innerHTML = ICON_EYE;
       thumb.appendChild(btn);
     }
-    const tip = isZip ? `Visualizar as ${zz.entries.length} imagens de ${ref.file} (Beta)` : (isVidFile ? `Assistir ${ref.file} (Beta)` : `Visualizar ${ref.file} em 1:1 (Beta)`);
+    const tip = isZip ? `Visualizar as ${zz.entries.length} imagens de ${ref.file} (Beta)` : (isVidFile ? `Assistir ${ref.file} (Beta)` : (isPdfFile ? `Ler ${ref.file} (Beta)` : `Visualizar ${ref.file} em 1:1 (Beta)`));
     if (btn.title !== tip) btn.title = tip;
     if (btn.getAttribute('aria-label') !== tip) btn.setAttribute('aria-label', tip);
   }
   function onUhubButtonClick(ev) {
-    const t = ev.target && ev.target.closest ? ev.target.closest('.uhub-att-cite, .uhub-att-inspect, .uhub-reply-btn, .uhub-attg-chip, .uhub-cmt-copy') : null;
+    const t = ev.target && ev.target.closest ? ev.target.closest('.uhub-att-cite, .uhub-att-rename, .uhub-att-inspect, .uhub-reply-btn, .uhub-attg-chip, .uhub-cmt-copy') : null;
     if (!t) return;
     ev.preventDefault();
     ev.stopPropagation();
@@ -6509,6 +7027,11 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
           bv.zipOpen.add(r.id);
           openBetaViewer(`${r.id}/${zf[0].index}`);
         } else openBetaViewer(r.id);
+      } else if (t.classList.contains('uhub-att-rename')) {
+        const li = t.closest('li.attachment-content');
+        const r = li && attachmentRef(li);
+        if (!r) { showToast('Não foi possível identificar o anexo', 3000); return; }
+        attStartRename(li, r);
       } else if (t.classList.contains('uhub-att-cite')) {
         const li = t.closest('li.attachment-content');
         const r = li && attachmentRef(li);
@@ -6666,7 +7189,8 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       const ref = attachmentRef(li);
       if (ref && isZipAttachmentLi(li, ref)) { bvPushZipItems(out, li, ref); return; }
       const isVid = !!ref && /\.(mp4|m4v|mov|webm|ogv)$/i.test(ref.file || '');
-      if (!ref || !(isVid || isImageAttachmentLi(li, ref))) return;
+      const isPdf = !!ref && /\.pdf$/i.test(ref.file || '');
+      if (!ref || !(isVid || isPdf || isImageAttachmentLi(li, ref))) return;
       const img = li.querySelector('img.attachment-thumb-img');
       const thumbSrc = img ? (img.dataset.uhubThumb || img.getAttribute('src') || '') : '';
       const sizeEl = li.querySelector('.attachment-size');
@@ -6682,15 +7206,16 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
         date: dateEl ? cleanText(dateEl.textContent) : '',
         dm: bvParseDm(ref.file),
         isVideo: isVid,
+        isPdf,
       });
     });
     return out;
   }
 
   function bvFindDmPair(item, all) {
-    if (!item || item.isVideo) return null;
+    if (!item || item.isVideo || item.isPdf) return null;
     for (const o of all) {
-      if (o.id === item.id || o.isVideo) continue;
+      if (o.id === item.id || o.isVideo || o.isPdf) continue;
       if (o.dm.base === item.dm.base && o.dm.isDm !== item.dm.isDm && o.dm.ext.toLowerCase() === item.dm.ext.toLowerCase()) {
         return o;
       }
@@ -6704,7 +7229,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     activeId: '',
     mode: 'single',      // 'single' | 'dm' | 'compare'
     cmpStyle: 'sbs',     // 'curtain' | 'sbs' | 'flip'
-    zoom: '100',         // 'fit' | numeric string '25'..'300'
+    zoom: 'auto',        // 'auto' | 'fit' | numeric string '25'..'300'
     split: 50,
     flipShowB: true,
     syncScroll: true,
@@ -6718,6 +7243,637 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
   };
 
   const bvVideoCache = new Map();
+  // ---------- PDF no Visualizador Beta: paginas de cima para baixo, contador e salto de pagina ----------
+  const bvPdfCache = new Map();
+  const bvPdfPos = new Map();
+  const bvPdfCtl = { token: 0, id: '', doc: null, stage: null, io: null, pages: [], w1: 0, cur: 1, hold: 0, holdTop: 0, onScroll: null, timer: 0, rt: 0, raf: 0 };
+  let bvPdfQueue = Promise.resolve();
+  let bvPdfErrs = 0;
+  // Máquina fraca (poucos núcleos ou pouca memória): menos qualidade por página, menos páginas prontas, menos PDFs guardados
+  const BV_PDF_SLOW = (navigator.hardwareConcurrency || 4) <= 4 || (navigator.deviceMemory || 8) <= 4;
+  const BV_PDF_DPR = BV_PDF_SLOW ? 1.25 : 2;
+  const BV_PDF_MAXPX = BV_PDF_SLOW ? 6000000 : 16000000;
+  const BV_PDF_MARGIN = BV_PDF_SLOW ? '500px 0px' : '1400px 0px';
+  const BV_PDF_PH = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 160'%3E%3Crect width='120' height='160' fill='%23f4f5f7'/%3E%3Ctext x='60' y='88' font-family='sans-serif' font-size='22' font-weight='700' text-anchor='middle' fill='%235e6c84'%3EPDF%3C/text%3E%3C/svg%3E";
+  function bvPdfWarn(e, where) {
+    try { if (bvPdfErrs++ < 5) diag({ where, error: String(e && (e.stack || e.message) || e).slice(0, 500) }); } catch {}
+  }
+  function bvPdfCleanup(full) {
+    const c = bvPdfCtl;
+    c.token += 1;
+    try { if (c.io) c.io.disconnect(); } catch {}
+    try { if (c.stage && c.onScroll) c.stage.removeEventListener('scroll', c.onScroll); } catch {}
+    clearTimeout(c.timer);
+    clearTimeout(c.rt);
+    try { c.pages.forEach((p) => { if (p.task) p.task.cancel(); }); } catch {}
+    c.io = null; c.stage = null; c.onScroll = null; c.doc = null; c.id = ''; c.pages = []; c.hold = 0;
+    if (full) {
+      bvPdfCache.forEach((e) => { try { if (e.doc) e.doc.destroy(); } catch {} });
+      bvPdfCache.clear();
+    }
+  }
+  function bvPdfLoad(item) {
+    const hit = bvPdfCache.get(item.id);
+    if (hit) { bvPdfCache.delete(item.id); bvPdfCache.set(item.id, hit); return hit.promise; }
+    const lib = pdfLib();
+    if (!lib) return Promise.reject(new Error('pdf.js indisponivel'));
+    const entry = { doc: null, promise: null };
+    entry.promise = (async () => {
+      const res = await fetch(item.fullUrl, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (Number(res.headers.get('content-length') || 0) > 150000000) throw new Error('PDF grande demais');
+      const total = Number(res.headers.get('content-length') || 0);
+      let buf;
+      if (res.body && res.body.getReader && total > 0) {
+        buf = new Uint8Array(total);
+        const rd = res.body.getReader();
+        let got = 0;
+        for (;;) {
+          const part = await rd.read();
+          if (part.done) break;
+          const v = part.value;
+          if (got + v.length > buf.length) {
+            const nb = new Uint8Array(Math.max(got + v.length, buf.length * 2));
+            nb.set(buf.subarray(0, got));
+            buf = nb;
+          }
+          buf.set(v, got);
+          got += v.length;
+          if (entry.prog) { try { entry.prog(got, Math.max(total, got)); } catch {} }
+        }
+        if (got !== buf.length) buf = buf.slice(0, got);
+      } else buf = new Uint8Array(await res.arrayBuffer());
+      entry.bytes = buf.length;
+      const doc = await lib.getDocument({ data: buf }).promise;
+      entry.doc = doc;
+      return doc;
+    })();
+    entry.promise.catch(() => { if (bvPdfCache.get(item.id) === entry) bvPdfCache.delete(item.id); });
+    bvPdfCache.set(item.id, entry);
+    const bvTot = () => { let s = 0; bvPdfCache.forEach((e) => { s += e.bytes || 0; }); return s; };
+    while (bvPdfCache.size > 1 && (bvPdfCache.size > (BV_PDF_SLOW ? 3 : 6) || bvTot() > (BV_PDF_SLOW ? 100000000 : 250000000))) {
+      const k = bvPdfCache.keys().next().value;
+      const old = bvPdfCache.get(k);
+      bvPdfCache.delete(k);
+      if (old) old.dead = true;
+      try { if (old && old.doc) old.doc.destroy(); } catch {}
+    }
+    return entry.promise;
+  }
+  function bvPdfCurrentPage(c, frac) {
+    const sr = c.stage.getBoundingClientRect();
+    const line = sr.top + sr.height * (frac || 0.35);
+    let lo = 0, hi = c.pages.length - 1, ans = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (c.pages[mid].el.getBoundingClientRect().top <= line) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    return ans + 1;
+  }
+  function bvPdfSync() {
+    const c = bvPdfCtl;
+    const st = c.stage;
+    if (!st || !c.pages.length) return;
+    let n = bvPdfCurrentPage(c);
+    if (c.hold && Math.abs(st.scrollTop - c.holdTop) < 2) n = c.hold;
+    else {
+      c.hold = 0;
+      if (st.scrollHeight > st.clientHeight && st.scrollTop + st.clientHeight >= st.scrollHeight - 2) n = c.pages.length;
+    }
+    c.cur = n;
+    bvPdfPos.set(c.id, n);
+    try {
+      const sz = c.S && c.S.sizes[n - 1];
+      if (sz) {
+        const nw = (sz.w * 96) / 72, nh = (sz.h * 96) / 72;
+        if (Math.abs(bv.natW - nw) > 0.5 || Math.abs(bv.natH - nh) > 0.5) {
+          bv.natW = nw;
+          bv.natH = nh;
+          const r = gid('uhub-beta-viewer');
+          const zl = r && r.querySelector('.bv-zoom-val');
+          if (zl) zl.textContent = bvZoomLabel();
+        }
+      }
+    } catch (e) { bvPdfWarn(e, 'pdf-sync'); }
+    const inp = st.querySelector('.bv-pdf-cur');
+    if (inp && document.activeElement !== inp) inp.value = String(n);
+    const pv = st.querySelector('.bv-pdf-prev'), nx = st.querySelector('.bv-pdf-next');
+    if (pv) pv.disabled = n <= 1;
+    if (nx) nx.disabled = n >= c.pages.length;
+  }
+  function bvPdfGoto(n) {
+    const c = bvPdfCtl;
+    if (!c.stage || !c.pages.length) return;
+    const k = Math.max(1, Math.min(c.pages.length, Math.round(Number(n) || 1)));
+    const sr = c.stage.getBoundingClientRect();
+    const pr = c.pages[k - 1].el.getBoundingClientRect();
+    c.stage.scrollTop = k === 1 ? 0 : Math.max(0, c.stage.scrollTop + (pr.top - sr.top) - 12);
+    c.cur = k;
+    c.hold = k;
+    c.holdTop = c.stage.scrollTop;
+    bvPdfSync();
+  }
+  function bvPdfQueuePage(p, token) {
+    bvPdfQueue = bvPdfQueue.then(() => bvPdfRenderPage(p, token)).catch(() => {});
+  }
+  async function bvPdfRenderPage(p, token) {
+    const c = bvPdfCtl;
+    if (token !== c.token || !p.want || p.busy || !c.doc) return;
+    const cssW = p.el.getBoundingClientRect().width;
+    if (cssW < 20 || (p.cv && p.cssW && Math.abs(cssW - p.cssW) / p.cssW < 0.1)) return;
+    p.busy = true;
+    try {
+      const page = await c.doc.getPage(p.n);
+      if (token !== c.token) return;
+      const base = page.getViewport({ scale: 1 });
+      // tamanho de cada página já vem de bvPdfSizes
+      const w = p.el.getBoundingClientRect().width || cssW;
+      let scale = (w / base.width) * Math.min(BV_PDF_DPR, window.devicePixelRatio || 1);
+      const px = base.width * base.height * scale * scale;
+      if (px > BV_PDF_MAXPX) scale *= Math.sqrt(BV_PDF_MAXPX / px);
+      const vp = page.getViewport({ scale });
+      const cv = mk('canvas');
+      cv.width = Math.max(1, Math.round(vp.width));
+      cv.height = Math.max(1, Math.round(vp.height));
+      const ctx = cv.getContext('2d');
+      if (!ctx) throw new Error('canvas indisponivel');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      p.task = page.render({ canvasContext: ctx, viewport: vp });
+      await p.task.promise;
+      p.task = null;
+      if (token !== c.token || !p.want) return;
+      if (p.cv) p.cv.remove();
+      p.cv = cv;
+      p.cssW = w;
+      p.el.appendChild(cv);
+      p.el.classList.add('bv-pdf-done');
+      try { page.cleanup(); } catch {}
+    } catch (e) {
+      p.task = null;
+      if (!(e && e.name === 'RenderingCancelledException')) bvPdfWarn(e, 'pdf-page');
+    } finally {
+      p.busy = false;
+      try {
+        if (token !== c.token) { if (p.want && !p.cv) bvPdfQueuePage(p, c.token); }
+        else if (p.want && p.cv && p.cssW) {
+          const now = p.el.getBoundingClientRect().width;
+          if (Math.abs(now - p.cssW) / p.cssW >= 0.1) bvPdfQueuePage(p, token);
+        }
+      } catch {}
+    }
+  }
+  // Largura (px) de UMA página conforme o zoom: cada página usa o próprio tamanho e proporção
+  function bvPdfPageW(sz, stage) {
+    const nw = (((sz && sz.w) || 595) * 96) / 72;
+    const nh = (((sz && sz.h) || 842) * 96) / 72;
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    const aw = Math.max(200, sw - 144);
+    const ah = sh > 140 ? sh - 40 : 0;
+    let m = bv.zoom;
+    if (m === 'auto') m = (nw > sw - 144 || nh > sh - 40) ? 'fit' : '100';
+    if (m === 'fit') {
+      if (nw / nh < 0.45) return Math.round(Math.max(120, Math.min(aw, 900)));
+      let w = aw;
+      if (ah > 100) w = Math.min(aw, Math.floor((ah * nw) / nh));
+      return Math.max(40, Math.round(w));
+    }
+    return Math.max(24, Math.round((nw * (Number(m) || 100)) / 100));
+  }
+  // Aplica o zoom em todas as páginas mantendo o ponto central da tela no mesmo lugar
+  function bvPdfLayout(stage, keep) {
+    const c = bvPdfCtl;
+    if (!c.S || c.stage !== stage || !c.pages.length) return;
+    bv.stgW = stage.clientWidth;
+    bv.stgH = stage.clientHeight;
+    let anc = null;
+    if (keep) {
+      const n = bvPdfCurrentPage(c, 0.5);
+      const pr = c.pages[n - 1].el.getBoundingClientRect();
+      const sr = stage.getBoundingClientRect();
+      anc = {
+        n,
+        f: pr.height ? (sr.top + sr.height / 2 - pr.top) / pr.height : 0,
+        fx: stage.scrollWidth > stage.clientWidth ? (stage.scrollLeft + stage.clientWidth / 2) / stage.scrollWidth : 0.5,
+      };
+    }
+    c.pages.forEach((p) => {
+      const w = bvPdfPageW(c.S.sizes[p.n - 1], stage);
+      if (p.w !== w) { p.w = w; p.el.style.width = `${w}px`; }
+    });
+    if (anc) {
+      const pr = c.pages[anc.n - 1].el.getBoundingClientRect();
+      const sr = stage.getBoundingClientRect();
+      stage.scrollTop += pr.top + anc.f * pr.height - (sr.top + sr.height / 2);
+    }
+    if (stage.scrollWidth > stage.clientWidth) {
+      stage.scrollLeft = Math.max(0, Math.round((anc ? anc.fx : 0.5) * stage.scrollWidth - stage.clientWidth / 2));
+    }
+    const tk = c.token;
+    clearTimeout(c.timer);
+    c.timer = setTimeout(() => { if (tk === c.token) c.pages.forEach((p) => { if (p.want && p.cv) bvPdfQueuePage(p, tk); }); }, 200);
+    bvPdfSync();
+  }
+  // Tamanho de todas as páginas (em lotes), guardado junto do PDF
+  // Abre rápido: lê o tamanho das 30 primeiras páginas e completa o resto aos poucos, sem travar a tela
+  function bvPdfSizes(ent, doc) {
+    if (ent.sizesP) return ent.sizesP;
+    const n = doc.numPages;
+    const real = new Array(n);
+    const out = new Array(n);
+    const load = async (from, to) => {
+      const jobs = [];
+      for (let j = from; j < Math.min(n, to); j += 1) {
+        jobs.push(doc.getPage(j + 1).then((pg) => {
+          const v = pg.getViewport({ scale: 1 });
+          if (v.width > 0 && v.height > 0) real[j] = { w: v.width, h: v.height };
+        }).catch((e) => bvPdfWarn(e, 'pdf-sizes')));
+      }
+      await Promise.all(jobs);
+    };
+    ent.sizesP = load(0, 30).then(() => {
+      const first = real.find((x) => x) || { w: 595, h: 842 };
+      for (let j = 0; j < n; j += 1) out[j] = real[j] || first;
+      ent.sizes = out;
+      ent.sizesDone = (async () => {
+        for (let i = 30; i < n; i += 25) {
+          await new Promise((r) => setTimeout(r, 0));
+          if (ent.dead) return;
+          await load(i, i + 25);
+          let ch = false;
+          for (let j = i; j < Math.min(n, i + 25); j += 1) {
+            const r = real[j];
+            if (r && (Math.abs(r.w - out[j].w) > 0.5 || Math.abs(r.h - out[j].h) > 0.5)) { out[j] = r; ch = true; }
+          }
+          if (ch && ent.onSizes) ent.onSizes(i, Math.min(n, i + 25));
+        }
+      })().catch((e) => bvPdfWarn(e, 'pdf-sizes'));
+      return out;
+    });
+    return ent.sizesP;
+  }
+  // Arrastar para navegar (imagens e PDF no leitor 1:1)
+  function bvEnablePan(stage) {
+    try {
+      let st = null, last = 0, blockClick = false;
+      const can = () => stage.scrollWidth > stage.clientWidth + 1 || stage.scrollHeight > stage.clientHeight + 1;
+      stage.addEventListener('dragstart', (ev) => { if (bv.mode === 'single') ev.preventDefault(); });
+      stage.addEventListener('pointerdown', (ev) => {
+        st = null;
+        if (ev.button !== 0 || ev.pointerType === 'touch' || bv.mode !== 'single') return;
+        if (ev.target.closest && ev.target.closest('button, a, input, select, textarea, video, label, .bv-pdf-nav')) return;
+        if (!can()) return;
+        st = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, l: stage.scrollLeft, t: stage.scrollTop, on: false };
+      });
+      stage.addEventListener('pointermove', (ev) => {
+        if (!st) {
+          if (bv.mode === 'single' && ev.timeStamp - last > 250) { last = ev.timeStamp; stage.classList.toggle('bv-pannable', can()); }
+          return;
+        }
+        if (ev.pointerId !== st.id) return;
+        const dx = ev.clientX - st.x, dy = ev.clientY - st.y;
+        if (!st.on) {
+          if (Math.abs(dx) + Math.abs(dy) < 5) return;
+          st.on = true;
+          try { stage.setPointerCapture(ev.pointerId); } catch {}
+          stage.classList.add('bv-panning');
+        }
+        stage.scrollLeft = st.l - dx;
+        stage.scrollTop = st.t - dy;
+        ev.preventDefault();
+      });
+      const end = (ev) => {
+        if (!st || ev.pointerId !== st.id) return;
+        try { if (st.on) stage.releasePointerCapture(ev.pointerId); } catch {}
+        stage.classList.remove('bv-panning');
+        if (st.on) { blockClick = true; setTimeout(() => { blockClick = false; }, 0); }
+        st = null;
+      };
+      stage.addEventListener('pointerup', end);
+      stage.addEventListener('pointercancel', end);
+      stage.addEventListener('click', (ev) => { if (blockClick) { ev.preventDefault(); ev.stopPropagation(); } }, true);
+    } catch (e) { bvPdfWarn(e, 'pdf-pan'); }
+  }
+  // Ficha do PDF: só o que importa para validar peças (compatibilidade Adobe)
+  const BV_ICC_SP = { RGB: 'RGB', CMYK: 'CMYK', GRAY: 'Cinza', Lab: 'Lab', XYZ: 'XYZ' };
+  const BV_PDF_VER = { '1.0': 'Acrobat 1', '1.1': 'Acrobat 2', '1.2': 'Acrobat 3', '1.3': 'Acrobat 4', '1.4': 'Acrobat 5', '1.5': 'Acrobat 6', '1.6': 'Acrobat 7', '1.7': 'Acrobat 8 ou mais novo', '2.0': 'ISO 32000-2' };
+  // Procura os perfis de cor (ICC) dentro do arquivo, em blocos de 8 MB e sem travar a tela. Devolve null se o arquivo for grande demais
+  async function bvPdfIcc(doc, bytes, limit) {
+    if (bytes > limit) return null;
+    const u8 = await doc.getData();
+    const dec = new TextDecoder('latin1');
+    const out = { icc: [], dev: [] };
+    const seen = new Set();
+    const CH = 8 * 1048576, OV = 1024;
+    let tried = 0;
+    for (let base = 0; base < u8.length && tried < 40; base += CH) {
+      const start = Math.max(0, base - OV);
+      const str = dec.decode(u8.subarray(start, Math.min(u8.length, base + CH + OV)));
+      const lo = base - start;
+      ['RGB', 'CMYK', 'Gray'].forEach((k) => { if (out.dev.indexOf(k) < 0 && str.indexOf(`/Device${k}`) >= 0) out.dev.push(k); });
+      for (let i = str.indexOf('stream', lo); i >= 0 && i < lo + CH && tried < 40; i = str.indexOf('stream', i + 6)) {
+        if (str.charCodeAt(i - 1) === 100) continue;
+        const j = str.lastIndexOf('>>', i);
+        if (j < 0 || i - j > 4) continue;
+        let dict = str.slice(Math.max(0, j - 700), j);
+        const ob = dict.lastIndexOf('obj');
+        if (ob >= 0) dict = dict.slice(ob + 3);
+        if (!/\/N\s+[134](?![0-9])/.test(dict) || /\/Subtype|\/Width|\/ObjStm|\/XRef|\/Metadata|\/Length1/.test(dict)) continue;
+        tried += 1;
+        try {
+          let a = start + i + 6;
+          if (u8[a] === 13) a += 1;
+          if (u8[a] === 10) a += 1;
+          const mL = /\/Length\s+(\d+)(\s+\d+\s+R)?/.exec(dict);
+          let len = mL && !mL[2] ? Number(mL[1]) : 0;
+          if (!len) len = Math.max(0, dec.decode(u8.subarray(a, Math.min(u8.length, a + 4194304))).indexOf('endstream'));
+          if (!len || len > 4194304) continue;
+          const flate = /\/Filter\s*\/(FlateDecode|Fl)(?![A-Za-z])/.test(dict);
+          if (/\/Filter/.test(dict) && !flate) continue;
+          let d = u8.subarray(a, a + len);
+          if (flate) d = await bvInflate(d);
+          if (d.length < 132 || String.fromCharCode(d[36], d[37], d[38], d[39]) !== 'acsp') continue;
+          const p = bvIcc(d);
+          const key = `${p.name}|${p.space}`;
+          if (!seen.has(key)) { seen.add(key); out.icc.push(p); }
+        } catch (e) { bvPdfWarn(e, 'pdf-icc-stream'); }
+      }
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    return out;
+  }
+  async function bvPdfInfo(pop, item) {
+    try {
+      const doc = await bvPdfLoad(item);
+      const ent = bvPdfCache.get(item.id);
+      const md = await doc.getMetadata().catch(() => null);
+      const info = (md && md.info) || {};
+      const xmp = {};
+      try {
+        const all = md && md.metadata && typeof md.metadata.getAll === 'function' ? md.metadata.getAll() : null;
+        if (all) Object.keys(all).forEach((k) => { xmp[k.toLowerCase()] = all[k]; });
+      } catch {}
+      let sizes = [];
+      let full = true;
+      if (ent) {
+        sizes = await bvPdfSizes(ent, doc);
+        if (ent.sizesDone) {
+          full = false;
+          await Promise.race([ent.sizesDone.then(() => { full = true; }), new Promise((r) => setTimeout(r, 3000))]);
+          sizes = ent.sizes || sizes;
+        }
+      }
+      if (!pop.isConnected) return;
+
+      const paper = (w, h) => {
+        const a = (Math.min(w, h) * 25.4) / 72, b = (Math.max(w, h) * 25.4) / 72;
+        const t = [['A0', 841, 1189], ['A1', 594, 841], ['A2', 420, 594], ['A3', 297, 420], ['A4', 210, 297], ['A5', 148, 210], ['A6', 105, 148], ['Letter', 215.9, 279.4], ['Legal', 215.9, 355.6]]
+          .find((x) => Math.abs(x[1] - a) < 2 && Math.abs(x[2] - b) < 2);
+        return t ? t[0] : '';
+      };
+      const dl = mk('dl');
+      const add = (k, v) => {
+        const s = (v === undefined || v === null) ? '' : String(v).trim();
+        if (!s) return null;
+        const dt = mk('dt');
+        dt.textContent = k;
+        const dd = mk('dd');
+        dd.textContent = s.length > 300 ? `${s.slice(0, 300)}…` : s;
+        dl.appendChild(dt);
+        dl.appendChild(dd);
+        return dd;
+      };
+      add('Aplicativo criador', info.Creator || xmp['xmp:creatortool']);
+      add('Motor gerador do PDF', info.Producer || xmp['pdf:producer']);
+      const ver = String(info.PDFFormatVersion || '');
+      add('Versão do PDF', ver ? `${ver}${BV_PDF_VER[ver] ? ` (${BV_PDF_VER[ver]})` : ''}` : '');
+      const ddIcc = add('Perfil de cor (ICC)', 'Analisando…');
+      const groups = new Map();
+      sizes.forEach((s) => {
+        const k = `${Math.round(s.w * 10)}x${Math.round(s.h * 10)}`;
+        const g = groups.get(k);
+        if (g) g.n += 1; else groups.set(k, { w: s.w, h: s.h, n: 1 });
+      });
+      const list = Array.from(groups.values()).sort((a, b) => b.n - a.n);
+      const mm = (v) => Math.round(((v * 25.4) / 72) * 10) / 10;
+      list.slice(0, 6).forEach((g, i) => {
+        const nm = paper(g.w, g.h);
+        add(i === 0 ? 'Caixa de mídia (MediaBox)' : '\u00a0', `${nm ? `${nm} · ` : ''}${mm(g.w)} × ${mm(g.h)} mm (${Math.round(g.w)} × ${Math.round(g.h)} pt)${list.length > 1 ? ` · ${g.n} pág.` : ''}`);
+      });
+      if (list.length > 6) add('\u00a0', `+${list.length - 6} outros tamanhos`);
+      if (list.length > 1) add('\u00a0', 'Atenção: páginas de tamanhos diferentes');
+      if (!full) add('\u00a0', 'Lista parcial: PDF muito longo');
+      const ori = { v: 0, h: 0, q: 0 };
+      sizes.forEach((s) => { if (Math.abs(s.w - s.h) < 1) ori.q += 1; else if (s.h > s.w) ori.v += 1; else ori.h += 1; });
+      const parts = [['Vertical', ori.v], ['Horizontal', ori.h], ['Quadrada', ori.q]].filter((x) => x[1]);
+      add('Orientação', parts.length === 1 ? parts[0][0] : parts.map((x) => `${x[0]} (${x[1]})`).join(' · '));
+      add('Páginas', doc.numPages);
+      add('Visualização rápida na Web (Linearized)', info.IsLinearized ? 'Sim' : 'Não');
+      pop.textContent = '';
+      pop.appendChild(dl);
+      const lim = (typeof BV_PDF_SLOW !== 'undefined' && BV_PDF_SLOW) ? 40000000 : 120000000;
+      bvPdfIcc(doc, (ent && ent.bytes) || 0, lim).then((r) => {
+        if (!ddIcc || !ddIcc.isConnected) return;
+        if (!r) { ddIcc.textContent = 'Não analisado (arquivo muito grande)'; return; }
+        if (!r.icc.length) {
+          const dev = r.dev.map((k) => ({ RGB: 'RGB', CMYK: 'CMYK', Gray: 'Cinza' }[k] || k));
+          ddIcc.textContent = `Nenhum perfil incorporado${dev.length ? ` · usa ${dev.join(' e ')} do dispositivo` : ''}`;
+          return;
+        }
+        const lines = r.icc.slice(0, 6).map((p) => `${p.name || 'Perfil sem nome'} (${BV_ICC_SP[p.space] || p.space})`);
+        ddIcc.textContent = lines[0];
+        let ref = ddIcc;
+        lines.slice(1).forEach((t) => {
+          const dt2 = mk('dt');
+          dt2.textContent = '\u00a0';
+          const dd2 = mk('dd');
+          dd2.textContent = t;
+          ref.after(dt2, dd2);
+          ref = dd2;
+        });
+      }).catch((e) => {
+        if (ddIcc && ddIcc.isConnected) ddIcc.textContent = 'Não foi possível ler o perfil';
+        bvPdfWarn(e, 'pdf-icc');
+      });
+    } catch (e) {
+      pop.textContent = 'Não foi possível ler os metadados deste PDF.';
+      bvPdfWarn(e, 'pdf-info');
+    }
+  }
+  function bvPdfBuildNav(c, stage, n) {
+    const bar = mk('div');
+    bar.className = 'bv-pdf-nav';
+    const box = mk('div');
+    box.className = 'bv-pdf-navbox';
+    const mkB = (cls, title, pts) => {
+      const b = mk('button');
+      b.type = 'button';
+      b.className = cls;
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      b.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="${pts}"></polyline></svg>`;
+      return b;
+    };
+    const prev = mkB('bv-pdf-prev', 'Página anterior (Page Up)', '6 15 12 9 18 15');
+    const next = mkB('bv-pdf-next', 'Próxima página (Page Down)', '6 9 12 15 18 9');
+    const inp = mk('input');
+    inp.type = 'text';
+    inp.inputMode = 'numeric';
+    inp.className = 'bv-pdf-cur';
+    inp.value = '1';
+    inp.title = 'Digite o número da página e tecle Enter';
+    inp.setAttribute('aria-label', 'Ir para a página');
+    const tot = mk('span');
+    tot.textContent = `/ ${n}`;
+    prev.addEventListener('click', () => bvPdfGoto(c.cur - 1));
+    next.addEventListener('click', () => bvPdfGoto(c.cur + 1));
+    inp.addEventListener('focus', () => inp.select());
+    inp.addEventListener('blur', () => { inp.value = String(c.cur); });
+    inp.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter') return;
+      ev.preventDefault();
+      const v = parseInt(inp.value, 10);
+      if (v) bvPdfGoto(v);
+      inp.blur();
+    });
+    box.appendChild(prev);
+    box.appendChild(inp);
+    box.appendChild(tot);
+    box.appendChild(next);
+    bar.appendChild(box);
+    stage.appendChild(bar);
+  }
+  function bvPdfMount(wrap, item, metaEl, idx, total) {
+    bvPdfCleanup(false);
+    const c = bvPdfCtl;
+    const token = c.token;
+    c.id = item.id;
+    c.S = null;
+    const msg = mk('div');
+    msg.className = 'bv-pdf-msg';
+    msg.textContent = 'Carregando PDF…';
+    wrap.classList.add('bv-wrap-c');
+    wrap.appendChild(msg);
+    const loading = bvPdfLoad(item);
+    const e0 = bvPdfCache.get(item.id);
+    if (e0 && !e0.doc) {
+      e0.prog = (got, tot) => {
+        if (msg.isConnected) msg.textContent = `Carregando PDF… ${Math.round((got / tot) * 100)}% (${(got / 1048576).toFixed(1)} de ${(tot / 1048576).toFixed(1)} MB)`;
+      };
+    }
+    loading.then(async (doc) => {
+      const ent = bvPdfCache.get(item.id);
+      if (!ent || token !== c.token || !wrap.isConnected) return;
+      const sizes = await bvPdfSizes(ent, doc);
+      if (token !== c.token || !wrap.isConnected) return;
+      const n = doc.numPages;
+      let S = ent.st;
+      if (!S) {
+        const el = mk('div');
+        el.className = 'bv-pdf-pages';
+        el.addEventListener('dblclick', () => { const r = gid('uhub-beta-viewer'); if (r) bvToggleFitZoom(r); });
+        const pages = [];
+        for (let i = 1; i <= n; i += 1) {
+          const pg = mk('div');
+          pg.className = 'bv-pdf-page';
+          pg.dataset.n = String(i);
+          pg.style.aspectRatio = `${sizes[i - 1].w} / ${sizes[i - 1].h}`;
+          const lab = mk('span');
+          lab.textContent = String(i);
+          pg.appendChild(lab);
+          el.appendChild(pg);
+          pages.push({ n: i, el: pg, cv: null, want: false, busy: false, cssW: 0, w: 0 });
+        }
+        S = { el, pages, sizes };
+        ent.st = S;
+        ent.onSizes = (a, b) => {
+          try {
+            for (let j = a; j < b; j += 1) {
+              const sz = ent.sizes[j];
+              if (sz && pages[j]) pages[j].el.style.aspectRatio = `${sz.w} / ${sz.h}`;
+            }
+            clearTimeout(c.szT);
+            c.szT = setTimeout(() => { if (c.S === S && c.stage && c.stage.isConnected) bvPdfLayout(c.stage, true); }, 120);
+          } catch (e) { bvPdfWarn(e, 'pdf-sizes-live'); }
+        };
+      }
+      msg.remove();
+      wrap.appendChild(S.el);
+      const stage = wrap.closest('.bv-stage');
+      if (!stage) return;
+      c.S = S;
+      c.doc = doc;
+      c.pages = S.pages;
+      c.stage = stage;
+      bvPdfLayout(stage, false);
+      const start = bvPdfPos.get(item.id) || 1;
+      if (start > 1) bvPdfGoto(start);
+      c.io = new IntersectionObserver((entries) => {
+        const cur = c.cur || 1;
+        entries.slice().sort((a, b) => Math.abs(Number(a.target.dataset.n) - cur) - Math.abs(Number(b.target.dataset.n) - cur)).forEach((en) => {
+          const p = c.pages[Number(en.target.dataset.n) - 1];
+          if (!p) return;
+          p.want = en.isIntersecting;
+          if (p.want) bvPdfQueuePage(p, token);
+          else {
+            if (p.task) { try { p.task.cancel(); } catch {} }
+            if (p.cv) { p.cv.remove(); p.cv = null; p.el.classList.remove('bv-pdf-done'); }
+          }
+        });
+      }, { root: stage, rootMargin: BV_PDF_MARGIN });
+      c.onScroll = () => { if (c.raf) return; c.raf = requestAnimationFrame(() => { c.raf = 0; bvPdfSync(); }); };
+      stage.addEventListener('scroll', c.onScroll, { passive: true });
+      bvPdfBuildNav(c, stage, n);
+      c.pages.forEach((p) => c.io.observe(p.el));
+      bvPdfSync();
+      const root = gid('uhub-beta-viewer');
+      if (root) bvPositionNavButtons(root);
+      bvSetMeta(metaEl, [`${idx + 1}/${total}`, `${n} ${n === 1 ? 'página' : 'páginas'}`, item.size, item.date].filter(Boolean), bvAuthorOf(item));
+    }).catch((e) => {
+      if (token !== c.token) return;
+      msg.textContent = 'Não foi possível abrir este PDF. Use "Abrir original ↗".';
+      bvPdfWarn(e, 'pdf-viewer');
+    });
+  }
+  function bvPdfThumb(it, im) {
+    im.src = BV_PDF_PH;
+    let tries = 0;
+    const tick = () => {
+      try {
+        const st = pdfCache.get(it.id);
+        const cv = st && st.done && st.box ? st.box.querySelector('canvas') : null;
+        if (cv) { im.src = cv.toDataURL('image/jpeg', 0.7); return; }
+        if (!st || st.failed || tries++ > 40) return;
+        setTimeout(tick, 500);
+      } catch (e) { bvPdfWarn(e, 'pdf-strip-thumb'); }
+    };
+    tick();
+  }
+  document.addEventListener('keydown', (ev) => {
+    try {
+      const c = bvPdfCtl;
+      if (!bv.open || !c.stage || !c.stage.isConnected || c.id !== bv.activeId || !c.pages.length || ev.defaultPrevented) return;
+      const tag = ev.target && ev.target.tagName;
+      if (tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+      const k = ev.key;
+      if (k === 'PageDown') bvPdfGoto(c.cur + 1);
+      else if (k === 'PageUp') bvPdfGoto(c.cur - 1);
+      else if (k === 'Home') bvPdfGoto(1);
+      else if (k === 'End') bvPdfGoto(c.pages.length);
+      else if (k === 'ArrowDown') c.stage.scrollTop += 90;
+      else if (k === 'ArrowUp') c.stage.scrollTop -= 90;
+      else return;
+      ev.preventDefault();
+    } catch (e) { bvPdfWarn(e, 'pdf-keys'); }
+  }, true);
+  window.addEventListener('resize', () => {
+    try {
+      const c = bvPdfCtl;
+      if (!bv.open || !c.stage || !c.stage.isConnected) return;
+      clearTimeout(c.rt);
+      c.rt = setTimeout(() => { const r = gid('uhub-beta-viewer'); if (r && !r.hidden) bvApplyZoomToStage(r, true); }, 150);
+    } catch (e) { bvPdfWarn(e, 'pdf-resize'); }
+  });
   function bvBindImgFallback(img, item) {
     // If it was already preloaded successfully, it will load instantly from cache
     const pre = bvGetPreloadedDimensions(item.fullUrl);
@@ -6734,9 +7890,31 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     };
   }
 
+  // Modo Auto: arquivo "Emkt..." (layout de e-mail) = 1:1. Senão, se a imagem passa das bordas/barras (com o mesmo respiro do modo Ajustar: 72px de cada lado e 20px em cima/embaixo), usa Ajustar; se cabe, 100%.
+  function bvAutoMode(nw, nh, stageEl) {
+    try {
+      const it = bv.items.find((x) => x.id === bv.activeId);
+      if (it && !it.isPdf && /^emkt/i.test(String(it.file || '').trim())) return '100';
+      const sw = stageEl ? stageEl.clientWidth : 0;
+      const sh = stageEl ? stageEl.clientHeight : 0;
+      if (!nw || !nh || !sw || !sh) return '100';
+      return (nw > sw - 144 || nh > sh - 40) ? 'fit' : '100';
+    } catch (e) {
+      console.warn('[Jira layout] zoom Auto:', e);
+      return '100';
+    }
+  }
+  function bvZoomLabel() {
+    if (bv.zoom === 'auto') {
+      const m = bvAutoMode(bv.natW, bv.natH, { clientWidth: bv.stgW || 0, clientHeight: bv.stgH || 0 });
+      return m === 'fit' ? 'Auto · Ajustar' : 'Auto · 100%';
+    }
+    return bv.zoom === 'fit' ? 'Ajustar' : (bv.zoom === '100' ? '1:1 (100%)' : `${bv.zoom}%`);
+  }
   function bvScaledWidth(naturalWidth, stageEl, naturalHeight) {
     const nw = naturalWidth || 600;
-    if (bv.zoom === 'fit') {
+    const zMode = bv.zoom === 'auto' ? bvAutoMode(nw, naturalHeight, stageEl) : bv.zoom;
+    if (zMode === 'fit') {
       const availW = Math.max(200, (stageEl ? stageEl.clientWidth : window.innerWidth) - 144);
       const availH = (stageEl && stageEl.clientHeight) ? stageEl.clientHeight - 40 : 0;
       let w = availW;
@@ -6747,6 +7925,33 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     return Math.max(120, Math.round((nw * pct) / 100));
   }
 
+  // Clicar fora do conteudo (imagem, video, PDF, cartoes, barras e setas) fecha o visualizador. Arrastar para
+  // mover a imagem ou rolar nao fecha.
+  function bvBindOutsideClose(el) {
+    try {
+      const KEEP = 'button, a, input, select, textarea, label, img, video, canvas, iframe, .bv-top, .bv-subbar, .bv-side-nav, .bv-info-pop, .bv-pdf-page, .bv-sbs-pane, .bv-curtain-wrap, .bv-pill, [class*="bv-strip"], [class*="bv-pdf-nav"]';
+      let down = null;
+      const outside = (ev) => {
+        const t = ev.target;
+        if (!t || !t.closest || ev.button !== 0) return false;
+        if (t.closest(KEEP)) return false;
+        if (t.clientWidth && (ev.offsetX > t.clientWidth || ev.offsetY > t.clientHeight)) return false;
+        return true;
+      };
+      el.addEventListener('mousedown', (ev) => {
+        down = outside(ev) ? { x: ev.clientX, y: ev.clientY } : null;
+      }, true);
+      el.addEventListener('click', (ev) => {
+        try {
+          const d = down;
+          down = null;
+          if (!d || !outside(ev)) return;
+          if (Math.abs(ev.clientX - d.x) + Math.abs(ev.clientY - d.y) >= 6) return;
+          closeBetaViewer();
+        } catch (e) { bvActLog(e); }
+      }, true);
+    } catch (e) { bvActLog(e); }
+  }
   function ensureBetaViewer() {
     let el = gid('uhub-beta-viewer');
     if (el) return el;
@@ -6755,6 +7960,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-modal', 'true');
     el.setAttribute('aria-label', 'Leitor vertical 1:1 e comparador Beta');
+    bvBindOutsideClose(el);
     el.hidden = true;
     document.body.appendChild(el);
     return el;
@@ -6770,6 +7976,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     el.innerHTML = '';
     bv.open = false;
     document.documentElement.classList.remove('uhub-beta-open');
+    try { bvPdfCleanup(false); } catch {}
     bv.compareIds = [];
     if (bv.prevFocus && typeof bv.prevFocus.focus === 'function') {
       try { bv.prevFocus.focus({ preventScroll: true }); } catch {}
@@ -6799,7 +8006,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     if (!prefs.betaViewer) return;
     const items = bvCollectImages();
     const chosen = (selectedIds || []).map((id) => items.find((x) => x.id === String(id))).filter(Boolean);
-    if (chosen.length !== 2 || chosen.some((x) => x.isVideo)) {
+    if (chosen.length !== 2 || chosen.some((x) => x.isVideo || x.isPdf)) {
       showToast('Selecione exatamente 2 imagens para comparar', 2500);
       return;
     }
@@ -6832,7 +8039,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     } else if (bv.mode === 'dm' && !dmPair) {
       bv.mode = 'single';
     }
-    if (item.isVideo && bv.mode !== 'single') bv.mode = 'single';
+    if ((item.isVideo || item.isPdf) && bv.mode !== 'single') bv.mode = 'single';
 
     bvRender();
   }
@@ -6916,7 +8123,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
 
     if (cur.length === 0) {
       const activeItem = bv.items.find((x) => x.id === bv.activeId);
-      if (bv.mode === 'single' && bv.activeId && bv.activeId !== id && !(activeItem && activeItem.isVideo)) {
+      if (bv.mode === 'single' && bv.activeId && bv.activeId !== id && !(activeItem && (activeItem.isVideo || activeItem.isPdf))) {
         // User is viewing image X and checks image Y -> immediately compare X vs Y
         bv.compareIds = [bv.activeId, id];
         bv.mode = 'compare';
@@ -6944,8 +8151,18 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     if (!stage) return;
     bv.stgW = stage.clientWidth;
     bv.stgH = stage.clientHeight;
-    const prevRatioY = (preserveAnchor && stage.scrollHeight > stage.clientHeight)
-      ? (stage.scrollTop + stage.clientHeight / 2) / stage.scrollHeight
+    if (bv.mode === 'single' && stage.querySelector('.bv-pdf-pages')) {
+      try { bvPdfLayout(stage, preserveAnchor); } catch (e) { bvPdfWarn(e, 'pdf-zoom'); }
+      const zl = el.querySelector('.bv-zoom-val');
+      if (zl) zl.textContent = bvZoomLabel();
+      bvPositionNavButtons(el);
+      return;
+    }
+    const prevRatioY = preserveAnchor
+      ? (stage.scrollHeight > stage.clientHeight ? (stage.scrollTop + stage.clientHeight / 2) / stage.scrollHeight : 0.5)
+      : null;
+    const prevRatioX = (preserveAnchor && stage.scrollWidth > stage.clientWidth)
+      ? (stage.scrollLeft + stage.clientWidth / 2) / stage.scrollWidth
       : null;
 
     if (bv.mode === 'single') {
@@ -6953,6 +8170,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       if (img && img.naturalWidth) {
         img.style.width = `${bvScaledWidth(img.naturalWidth, stage, img.naturalHeight)}px`;
       }
+
     } else if (bv.cmpStyle === 'curtain') {
       const wrap = stage.querySelector('.bv-curtain-wrap');
       const imgA = wrap && wrap.querySelector('img.bv-img-a');
@@ -6987,9 +8205,12 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     if (prevRatioY !== null && stage.scrollHeight > stage.clientHeight) {
       stage.scrollTop = Math.max(0, Math.round(prevRatioY * stage.scrollHeight - stage.clientHeight / 2));
     }
+    if (bv.mode === 'single' && stage.scrollWidth > stage.clientWidth) {
+      stage.scrollLeft = Math.max(0, Math.round((prevRatioX === null ? 0.5 : prevRatioX) * stage.scrollWidth - stage.clientWidth / 2));
+    }
 
     const zLbl = el.querySelector('.bv-zoom-val');
-    if (zLbl) zLbl.textContent = bv.zoom === 'fit' ? 'Ajustar' : (bv.zoom === '100' ? '1:1 (100%)' : `${bv.zoom}%`);
+    if (zLbl) zLbl.textContent = bvZoomLabel();
     bvPositionNavButtons(el);
   }
   function bvPositionNavButtons(el) {
@@ -7023,6 +8244,12 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
         s.style.filter = 'none';
       }
     });
+    try {
+      if (sr) {
+        el.style.setProperty('--bv-nav-x', `${Math.round(sr.left + sr.width / 2)}px`);
+        el.style.setProperty('--bv-nav-y', `${Math.round(sr.bottom - 54)}px`);
+      }
+    } catch {}
     prevBtn.style.setProperty('left', '4px', 'important');
     prevBtn.style.setProperty('right', 'auto', 'important');
     nextBtn.style.setProperty('right', '4px', 'important');
@@ -7050,7 +8277,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       .then((r) => { if (!r.ok) throw new Error('http'); return r.json(); })
       .then((d) => {
         z.entries = !iid ? [] : (d.entries || [])
-          .filter((e) => /^image\/(png|jpe?g|gif|webp|bmp|avif)$/i.test(e.mediaType || ''))
+          .filter((e) => /^image\/(png|jpe?g|gif|webp|bmp|avif)$/i.test(e.mediaType || '') && !/(^|\/)(__MACOSX|\.[^/.][^/]*)(\/|$)/.test(String(e.path || e.label || '')))
           .map((e) => ({
             index: e.index,
             name: String(e.path || e.label || '').split('/').pop(),
@@ -7208,8 +8435,12 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
         v.src = it.fullUrl + '#t=0.1';
       } catch (e) { diag({ where: 'video-strip-thumb', error: String(e && (e.stack || e.message) || e).slice(0, 500) }); }
     } else {
-      im.src = it.thumbSrc || bvBlobUrls.get(it.fullUrl) || it.fullUrl;
-      im.onerror = () => { if (it.fullUrl && im.src !== it.fullUrl) im.src = it.fullUrl; };
+      if (it.isPdf) {
+        bvPdfThumb(it, im);
+      } else {
+        im.src = it.thumbSrc || bvBlobUrls.get(it.fullUrl) || it.fullUrl;
+        im.onerror = () => { if (it.fullUrl && im.src !== it.fullUrl) im.src = it.fullUrl; };
+      }
     }
     bvThumbCache.set(k, im);
     return im;
@@ -7334,58 +8565,175 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     } catch (e) {}
     return r;
   }
+  // Textos e datas gravados dentro do arquivo: EXIF (câmeras e Adobe), XMP (Adobe) e blocos de texto do PNG
+  function bvExif(u8, o0, len) {
+    const r = {};
+    try {
+      const dv = new DataView(u8.buffer, u8.byteOffset + o0, len);
+      const le = String.fromCharCode(u8[o0], u8[o0 + 1]) === 'II';
+      const g16 = (o) => dv.getUint16(o, le), g32 = (o) => dv.getUint32(o, le);
+      const str = (o, n) => {
+        let t = '';
+        for (let i = 0; i < n && o + i < len; i += 1) { const c = dv.getUint8(o + i); if (!c) break; t += String.fromCharCode(c); }
+        return t.trim();
+      };
+      const ifd = (off, depth) => {
+        const n = g16(off);
+        for (let i = 0; i < n && i < 200; i += 1) {
+          const e = off + 2 + i * 12;
+          const tag = g16(e), type = g16(e + 2), cnt = g32(e + 4);
+          const vo = (type === 2 && cnt > 4) ? g32(e + 8) : e + 8;
+          if (tag === 0x0131 && type === 2) r.software = str(vo, cnt);
+          else if (tag === 0x0132 && type === 2) r.modified = str(vo, cnt);
+          else if (tag === 0x9003 && type === 2) r.created = str(vo, cnt);
+          else if (tag === 0x9004 && type === 2) r.digitized = str(vo, cnt);
+          else if (tag === 0x0112 && type === 3) r.orient = g16(e + 8);
+          else if (tag === 0xA001 && type === 3) r.cs = g16(e + 8);
+          else if (tag === 0x8769 && depth < 1) ifd(g32(e + 8), depth + 1);
+        }
+      };
+      ifd(g32(4), 0);
+    } catch {}
+    return r;
+  }
+  const bvExifDate = (s) => {
+    const m = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}:\d{2}:\d{2})/.exec(String(s || ''));
+    return m && m[1] !== '0000' ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}` : '';
+  };
+  const bvIsoDate = (s) => { if (!s) return ''; const d = new Date(s); return Number.isNaN(d.getTime()) ? String(s) : d.toLocaleString('pt-BR'); };
+  function bvXmp(txt) {
+    const pick = (tag) => {
+      const a = new RegExp(`${tag}="([^"]*)"`, 'i').exec(txt);
+      if (a) return a[1];
+      const b = new RegExp(`<${tag}[^>]*>\\s*(?:<rdf:(?:Alt|Seq|Bag)>\\s*<rdf:li[^>]*>)?([^<]*)`, 'i').exec(txt);
+      return b ? b[1].trim() : '';
+    };
+    return { tool: pick('xmp:CreatorTool'), created: pick('xmp:CreateDate'), modified: pick('xmp:ModifyDate'), icc: pick('photoshop:ICCProfile') };
+  }
   async function bvReadMeta(item) {
     const blob = await bvGetBlob(item.fullUrl);
     const u8 = new Uint8Array(await blob.arrayBuffer());
     const dv = new DataView(u8.buffer);
     const s = (a, b) => String.fromCharCode(...u8.subarray(a, b));
-    const m = { fmt: blob.type || '', dpi: 0, depth: 0, mode: '', icc: null, srgb: false };
+    const u8d = new TextDecoder('utf-8');
+    const m = { fmt: (blob.type || '').replace('image/', '').toUpperCase(), dpi: 0, depth: 0, mode: '', ch: 0, comp: '', alpha: '', il: '', sub: '', icc: null, srgb: false, sw: '', created: '', modified: '', orient: 1, frames: 0, ms: 0, loops: -1 };
+    const useExif = (o, len) => {
+      const x = bvExif(u8, o, len);
+      m.sw = m.sw || x.software || '';
+      m.created = m.created || bvExifDate(x.created || x.digitized);
+      m.modified = m.modified || bvExifDate(x.modified);
+      if (x.orient) m.orient = x.orient;
+      if (x.cs === 1) m.exifSrgb = true;
+    };
+    const useXmp = (txt) => {
+      const x = bvXmp(txt);
+      m.sw = m.sw || x.tool;
+      m.created = m.created || bvIsoDate(x.created);
+      m.modified = m.modified || bvIsoDate(x.modified);
+      m.xmpIcc = m.xmpIcc || x.icc;
+    };
     try {
       if (s(1, 4) === 'PNG') {
         m.fmt = 'PNG';
-        const CT = { 0: 'Tons de cinza', 2: 'RGB', 3: 'Indexado', 4: 'Cinza + alfa', 6: 'RGB + alfa' };
+        m.comp = 'Deflate (sem perda)';
+        const CT = { 0: ['Tons de cinza', 1], 2: ['RGB', 3], 3: ['Indexado', 1], 4: ['Tons de cinza', 2], 6: ['RGB', 4] };
+        let ct = -1, plte = 0, trns = false, ptime = '';
         for (let p = 8; p + 8 <= u8.length;) {
           const len = dv.getUint32(p), t = s(p + 4, p + 8), d = p + 8;
-          if (t === 'IHDR') { m.depth = u8[d + 8]; m.mode = CT[u8[d + 9]] || ''; }
+          if (t === 'IHDR') {
+            m.depth = u8[d + 8];
+            ct = u8[d + 9];
+            if (CT[ct]) { m.mode = CT[ct][0]; m.ch = CT[ct][1]; }
+            if (u8[d + 12] === 1) m.il = 'Entrelaçado (Adam7)';
+          } else if (t === 'PLTE') plte = len / 3;
+          else if (t === 'tRNS') trns = true;
           else if (t === 'pHYs' && u8[d + 8] === 1) m.dpi = Math.round(dv.getUint32(d) * 0.0254);
           else if (t === 'sRGB') m.srgb = true;
           else if (t === 'iCCP') {
             let z = d;
             while (u8[z]) z++;
             m.icc = bvIcc(await bvInflate(u8.subarray(z + 2, d + len)));
-          } else if (t === 'IDAT' || t === 'IEND') break;
+          } else if (t === 'tIME' && len >= 7) {
+            const p2 = (n) => String(n).padStart(2, '0');
+            ptime = `${p2(u8[d + 3])}/${p2(u8[d + 2])}/${dv.getUint16(d)} ${p2(u8[d + 4])}:${p2(u8[d + 5])}:${p2(u8[d + 6])}`;
+          } else if (t === 'tEXt') {
+            const z = u8.indexOf(0, d);
+            if (z > d && z < d + len) {
+              const key = s(d, z), val = s(z + 1, d + len);
+              if (key === 'Software') m.sw = m.sw || val;
+              else if (key === 'Creation Time') m.created = m.created || val;
+            }
+          } else if (t === 'iTXt') {
+            const z = u8.indexOf(0, d);
+            if (z > d && z < d + len && s(d, z) === 'XML:com.adobe.xmp') {
+              let q = z + 3;
+              while (q < d + len && u8[q]) q++;
+              q++;
+              while (q < d + len && u8[q]) q++;
+              q++;
+              let body = u8.subarray(q, d + len);
+              if (u8[z + 1]) body = await bvInflate(body);
+              useXmp(u8d.decode(body));
+            }
+          } else if (t === 'eXIf') useExif(d, len);
+          else if (t === 'acTL') { m.frames = dv.getUint32(d); m.loops = dv.getUint32(d + 4); }
+          else if (t === 'fcTL') m.ms += (dv.getUint16(d + 20) / (dv.getUint16(d + 22) || 100)) * 1000;
+          else if (t === 'IEND') break;
           p += 12 + len;
         }
+        if (ct === 3 && plte) m.mode = `Indexado (paleta de ${plte} cores)`;
+        m.alpha = (ct === 4 || ct === 6) ? 'Sim (canal alfa)' : (trns ? (ct === 3 ? 'Sim (paleta com transparência)' : 'Sim (cor transparente)') : 'Não');
+        if (ptime && !m.modified) m.modified = ptime;
       } else if (u8[0] === 0xFF && u8[1] === 0xD8) {
         m.fmt = 'JPEG';
         const parts = [];
+        let adobe = -1, sof = 0, samp = [];
         for (let p = 2; p + 4 <= u8.length && u8[p] === 0xFF;) {
           const k = u8[p + 1], len = dv.getUint16(p + 2);
           if (k === 0xDA) break;
           if (k === 0xE0 && s(p + 4, p + 8) === 'JFIF') { const u = u8[p + 11], x = dv.getUint16(p + 12); m.dpi = u === 1 ? x : (u === 2 ? Math.round(x * 2.54) : 0); }
+          else if (k === 0xE1 && s(p + 4, p + 8) === 'Exif') useExif(p + 10, len - 8);
+          else if (k === 0xE1 && s(p + 4, p + 32) === 'http://ns.adobe.com/xap/1.0/') useXmp(u8d.decode(u8.subarray(p + 33, p + 2 + len)));
           else if (k === 0xE2 && s(p + 4, p + 15) === 'ICC_PROFILE') parts[u8[p + 16]] = u8.subarray(p + 18, p + 2 + len);
-          else if (k >= 0xC0 && k <= 0xC2) { m.depth = u8[p + 4]; m.mode = { 1: 'Tons de cinza', 3: 'RGB / YCbCr', 4: 'CMYK' }[u8[p + 9]] || ''; }
+          else if (k === 0xEE && s(p + 4, p + 9) === 'Adobe') adobe = u8[p + 15];
+          else if ((k >= 0xC0 && k <= 0xC3) || (k >= 0xC9 && k <= 0xCB)) {
+            sof = k;
+            m.depth = u8[p + 4];
+            m.ch = u8[p + 9];
+            samp = [];
+            for (let c = 0; c < m.ch; c++) samp.push(u8[p + 11 + c * 3]);
+          }
           p += 2 + len;
         }
-        const ch = parts.filter(Boolean);
-        if (ch.length) {
-          const all = new Uint8Array(ch.reduce((a, c) => a + c.length, 0));
+        const prog = sof === 0xC2 || sof === 0xCA;
+        m.comp = sof === 0xC3 ? 'JPEG sem perda' : `JPEG ${prog ? 'progressivo' : (sof >= 0xC9 ? 'aritmético' : 'baseline')} (DCT, com perdas)`;
+        m.mode = m.ch === 1 ? 'Tons de cinza' : (m.ch === 4 ? (adobe === 2 ? 'CMYK (YCCK)' : 'CMYK') : (m.ch === 3 ? 'RGB' : ''));
+        m.alpha = 'Não';
+        if (m.ch === 3 && samp.length === 3 && samp[1] === 0x11 && samp[2] === 0x11) {
+          m.sub = ({ 0x11: '4:4:4', 0x21: '4:2:2', 0x22: '4:2:0', 0x12: '4:4:0', 0x41: '4:1:1' })[samp[0]] || '';
+        }
+        const chunks = parts.filter(Boolean);
+        if (chunks.length) {
+          const all = new Uint8Array(chunks.reduce((a, c) => a + c.length, 0));
           let o = 0;
-          ch.forEach((c) => { all.set(c, o); o += c.length; });
+          chunks.forEach((c) => { all.set(c, o); o += c.length; });
           m.icc = bvIcc(all);
         }
       } else if (s(0, 3) === 'GIF') {
-        m.fmt = 'GIF';
-        m.mode = 'Indexado (paleta)';
-        m.depth = ((u8[10] >> 4) & 7) + 1;
-        m.frames = 0;
-        m.ms = 0;
+        m.fmt = s(0, 6);
+        m.comp = 'LZW (sem perda)';
+        m.ch = 1;
+        const gct = (u8[10] & 0x80) !== 0;
+        m.mode = gct ? `Indexado (paleta de ${2 ** ((u8[10] & 7) + 1)} cores)` : 'Indexado (paleta por quadro)';
+        m.depth = (u8[10] & 7) + 1;
+        let trans = false;
         const skip = (q) => { while (q < u8.length && u8[q]) q += u8[q] + 1; return q + 1; };
-        let p = 13 + ((u8[10] & 0x80) ? 3 * (2 ** ((u8[10] & 7) + 1)) : 0);
+        let p = 13 + (gct ? 3 * (2 ** ((u8[10] & 7) + 1)) : 0);
         while (p < u8.length) {
           const b = u8[p];
           if (b === 0x21) {
-            if (u8[p + 1] === 0xF9) { const d = dv.getUint16(p + 4, true); m.ms += (d <= 1 ? 10 : d) * 10; }
+            if (u8[p + 1] === 0xF9) { if (u8[p + 3] & 1) trans = true; const d = dv.getUint16(p + 4, true); m.ms += (d <= 1 ? 10 : d) * 10; }
+            else if (u8[p + 1] === 0xFF && s(p + 3, p + 14) === 'NETSCAPE2.0') m.loops = dv.getUint16(p + 16, true);
             p = skip(p + 2);
           } else if (b === 0x2C) {
             m.frames++;
@@ -7393,16 +8741,67 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
             p = skip(p + 11 + ((f & 0x80) ? 3 * (2 ** ((f & 7) + 1)) : 0));
           } else break;
         }
+        m.alpha = trans ? 'Sim (cor transparente da paleta)' : 'Não';
       } else if (s(0, 4) === 'RIFF' && s(8, 12) === 'WEBP') {
         m.fmt = 'WebP';
+        m.depth = 8;
+        let alpha = false;
         for (let p = 12; p + 8 <= u8.length;) {
-          const sz = dv.getUint32(p + 4, true);
-          if (s(p, p + 4) === 'ICCP') { m.icc = bvIcc(u8.subarray(p + 8, p + 8 + sz)); break; }
+          const t = s(p, p + 4), sz = dv.getUint32(p + 4, true), d = p + 8;
+          if (t === 'VP8 ') m.comp = 'VP8 (com perdas)';
+          else if (t === 'VP8L') { m.comp = 'VP8L (sem perda)'; if ((dv.getUint32(d + 1, true) >>> 28) & 1) alpha = true; }
+          else if (t === 'VP8X') { if (u8[d] & 0x10) alpha = true; }
+          else if (t === 'ALPH') alpha = true;
+          else if (t === 'ICCP') m.icc = bvIcc(u8.subarray(d, d + sz));
+          else if (t === 'EXIF') { const x6 = s(d, d + 4) === 'Exif' ? 6 : 0; useExif(d + x6, sz - x6); }
+          else if (t === 'XMP ') useXmp(u8d.decode(u8.subarray(d, d + sz)));
+          else if (t === 'ANIM') m.loops = dv.getUint16(d + 4, true);
+          else if (t === 'ANMF') { m.frames += 1; m.ms += u8[d + 12] | (u8[d + 13] << 8) | (u8[d + 14] << 16); }
           p += 8 + sz + (sz & 1);
         }
+        m.comp = m.comp || (m.frames ? 'VP8/VP8L (animado)' : '');
+        m.mode = 'RGB';
+        m.ch = alpha ? 4 : 3;
+        m.alpha = alpha ? 'Sim (canal alfa)' : 'Não';
+      } else if (/\.svg$/i.test(item.file || '') || /svg/i.test(blob.type || '')) {
+        m.fmt = 'SVG';
+        const txt = u8d.decode(u8.subarray(0, Math.min(u8.length, 4000000)));
+        const g = /Generator:\s*([^<]*?)(?:\s*-->|\s*<)/.exec(txt);
+        const ink = /inkscape:version="([^"]*)"/.exec(txt);
+        if (g) m.sw = g[1].split(',')[0].trim();
+        else if (ink) m.sw = `Inkscape ${ink[1]}`;
+        m.svg = { text: /<text[\s>]/i.test(txt), img: /<image[\s>]/i.test(txt) };
       }
     } catch (e) {}
     return m;
+  }
+  // Linhas da ficha da imagem: só o que existe e faz sentido para cada formato (dimensões, tamanho e autor já aparecem no topo)
+  const BV_EXIF_ORI = { 2: 'espelhada na horizontal', 3: 'girada 180°', 4: 'espelhada na vertical', 5: 'transposta', 6: 'girada 90° no sentido horário', 7: 'transversa', 8: 'girada 90° no sentido anti-horário' };
+  function bvImgRows(m) {
+    const rows = [];
+    if (!m) return rows;
+    const add = (k, v) => { if (v) rows.push([k, String(v)]); };
+    add('Formato', m.fmt === 'SVG' ? 'SVG (vetorial)' : m.fmt);
+    if (m.fmt === 'SVG') {
+      add('Texto como fonte (não convertido em curvas)', m.svg ? (m.svg.text ? 'Sim' : 'Não') : '');
+      add('Imagens raster embutidas', m.svg ? (m.svg.img ? 'Sim' : 'Não') : '');
+    } else {
+      add('Compressão', m.comp);
+      add('Modelo de cor', m.mode ? `${m.mode}${m.ch ? ` · ${m.ch} ${m.ch === 1 ? 'canal' : 'canais'}` : ''}` : '');
+      const idx = /^Indexado/.test(m.mode);
+      add('Profundidade', m.depth ? `${m.depth} ${m.depth === 1 ? 'bit' : 'bits'} por ${idx ? 'índice' : 'canal'}${m.ch && !idx ? ` (${m.depth * m.ch} bits por pixel)` : ''}` : '');
+      add('Transparência', m.alpha);
+      if (!/^GIF/.test(m.fmt)) {
+        add('Perfil de cor (ICC)', m.icc ? `${m.icc.name || 'Sem nome'} (${BV_ICC_SP[m.icc.space] || m.icc.space}, ICC v${m.icc.ver})` : (m.srgb ? 'sRGB (marcador PNG)' : (m.exifSrgb ? 'sRGB (marcador EXIF)' : (m.xmpIcc ? `${m.xmpIcc} (indicado no XMP)` : 'Nenhum embutido'))));
+      }
+      add('Subamostragem de croma', m.sub);
+      add('Entrelaçamento', m.il);
+      add('Resolução', m.dpi ? `${m.dpi} ppi` : '');
+      if (m.frames > 1) add('Animação', `${m.frames} quadros${m.ms ? ` · ${(m.ms / 1000).toFixed(2).replace('.', ',')} s` : ''}${m.loops === 0 ? ' · repete sem parar' : (m.loops > 0 ? ` · repete ${m.loops}×` : '')}`);
+      add('Orientação gravada (EXIF)', BV_EXIF_ORI[m.orient] ? `${BV_EXIF_ORI[m.orient]} (valor ${m.orient})` : '');
+    }
+    add('Criado com', m.sw);
+    return rows;
   }
   // Conta as cores diferentes da imagem (ignora pixels totalmente transparentes; para em 1 milhão)
   async function bvCountColors(item) {
@@ -7456,6 +8855,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       document.removeEventListener('pointerdown', off, true);
     };
     document.addEventListener('pointerdown', off, true);
+    if (item.isPdf) { bvPdfInfo(pop, item); return; }
     if (item.isVideo) {
       try {
         const fmtDur = (d) => (d >= 60 ? `${Math.floor(d / 60)}:${String(Math.floor(d % 60)).padStart(2, '0')}` : `${d.toFixed(1).replace('.', ',')} s`);
@@ -7610,20 +9010,16 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
             : 'Sem faixa de áudio')
           : '';
         const vrows = [
-          ['Arquivo', item.file],
           ['Contêiner', container],
-          ['Dimensões', vw ? `${vw} × ${vh} px` : ''],
           ['Proporção', ratio],
           ['Orientação', vw && vh ? (vw === vh ? 'Quadrado' : (vw > vh ? 'Horizontal' : 'Vertical')) : ''],
           ['Duração', vd ? fmtDur(vd) : ''],
-          ['Tamanho', item.size],
           ['Taxa de bits (média)', rate],
           ['Codec de vídeo', vcName],
           ['Quadros por segundo (média)', info.fps ? `${String(Number(info.fps.toFixed(2))).replace('.', ',')} fps` : ''],
           ['Total de quadros', info.frames ? String(info.frames) : ''],
           ['Espaço de cor', info.color],
           ['Áudio', audioText],
-          ['Enviado', bvAuthorOf(item) ? `${item.date} · por ${bvAuthorOf(item)}` : item.date],
         ];
         const dlv = mk('dl');
         vrows.forEach(([k, v]) => {
@@ -7642,40 +9038,32 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       }
       return;
     }
-    const m = await bvReadMeta(item).catch(() => null);
+    const m = await bvReadMeta(item).catch((e) => { try { diag({ where: 'img-meta', error: String(e && (e.stack || e.message) || e).slice(0, 500) }); } catch {} return null; });
     if (!pop.isConnected) return;
-    const colorCount = await bvCountColors(item);
-    if (!pop.isConnected) return;
-    const rows = [
-      ['Arquivo', item.file],
-      ['Formato', m && m.fmt],
-      ['Dimensões', bv.natW ? `${bv.natW} × ${bv.natH} px` : ''],
-      ['Tamanho', item.size],
-      ['Enviado', bvAuthorOf(item) ? `${item.date} · por ${bvAuthorOf(item)}` : item.date],
-      ['Modo de cor', m && m.mode],
-      ['Profundidade', m && m.depth ? `${m.depth} bits` : ''],
-      ['Cores', colorCount],
-      ['Resolução', m && m.dpi ? `${m.dpi} ppi` : ''],
-      ['Perfil de cor', m && (m.icc ? (m.icc.name || 'Sem nome') : (m.srgb ? 'sRGB (marcador PNG)' : 'Nenhum embutido'))],
-      ['Espaço do perfil', m && m.icc ? `${m.icc.space} · ICC v${m.icc.ver}` : ''],
-      ['Quadros', m && m.frames > 1 ? String(m.frames) : ''],
-      ['Duração', m && m.frames > 1 && m.ms ? `${(m.ms / 1000).toFixed(2).replace('.', ',')} s` : ''],
-    ];
+    if (!m) { pop.textContent = 'Não foi possível ler os metadados desta imagem.'; return; }
     const dl = mk('dl');
-    rows.forEach(([k, v]) => {
-      if (!v) return;
+    const put = (k, v) => {
       const dt = mk('dt');
       dt.textContent = k;
       const dd = mk('dd');
       dd.textContent = v;
       dl.append(dt, dd);
-    });
+      return [dt, dd];
+    };
+    bvImgRows(m).forEach(([k, v]) => put(k, v));
     pop.textContent = '';
     pop.appendChild(dl);
+    if (m.fmt !== 'SVG') {
+      const [dtc, ddc] = put('Cores distintas', 'calculando…');
+      bvCountColors(item).then((cc) => {
+        if (cc) ddc.textContent = cc; else { dtc.remove(); ddc.remove(); }
+      }).catch(() => { dtc.remove(); ddc.remove(); });
+    }
   }
 
   function bvToggleFitZoom(el) {
-    bv.zoom = bv.zoom === '100' ? 'fit' : '100';
+    const curMode = bv.zoom === 'auto' ? bvAutoMode(bv.natW, bv.natH, { clientWidth: bv.stgW || 0, clientHeight: bv.stgH || 0 }) : bv.zoom;
+    bv.zoom = curMode === '100' ? 'fit' : '100';
     bvApplyZoomToStage(el, true);
   }
 
@@ -7757,8 +9145,11 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     const items = bv.items;
     const idx = Math.max(0, items.findIndex((x) => x.id === bv.activeId));
     const item = items[idx];
-    bvPreload(item.fullUrl, 'high');
-    bvPreloadNeighbors(items, idx);
+    const bvNoPdf = items.filter((x) => !x.isPdf);
+    if (!item.isPdf) {
+      bvPreload(item.fullUrl, 'high');
+      bvPreloadNeighbors(bvNoPdf, bvNoPdf.findIndex((x) => x.id === item.id));
+    }
 
     const dmPair = bvFindDmPair(item, items);
     if (dmPair) bvPreload(dmPair.fullUrl);
@@ -7813,6 +9204,18 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
 
     stage.appendChild(prevBtn);
     stage.appendChild(nextBtn);
+    let bvDownAt = null;
+    stage.addEventListener('mousedown', (ev) => {
+      bvDownAt = (ev.target === stage && ev.offsetX < stage.clientWidth && ev.offsetY < stage.clientHeight) ? { x: ev.clientX, y: ev.clientY } : null;
+    });
+    stage.addEventListener('click', (ev) => {
+      try {
+        if (ev.target !== stage || !bvDownAt || ev.button !== 0) return;
+        const moved = Math.abs(ev.clientX - bvDownAt.x) + Math.abs(ev.clientY - bvDownAt.y);
+        bvDownAt = null;
+        if (moved < 6) closeBetaViewer();
+      } catch (e) { bvActLog(e); }
+    });
 
     const titleWrap = mk('div');
     titleWrap.className = 'bv-title-wrap';
@@ -7825,7 +9228,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
 
     // Apply preloaded dimensions immediately if available
     const dims = bvGetPreloadedDimensions(item.fullUrl);
-    const dimStr = dims ? `${dims.w} × ${dims.h} px` : '... px';
+    const dimStr = item.isPdf ? 'PDF' : (dims ? `${dims.w} × ${dims.h} px` : '... px');
 
     const metaParts = [`${idx + 1}/${items.length}`, dimStr];
     if (item.size) metaParts.push(item.size);
@@ -7837,8 +9240,8 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     const infoBtn = mk('button');
     infoBtn.type = 'button';
     infoBtn.className = 'bv-info-btn';
-    infoBtn.title = item.isVideo ? 'Informações do vídeo (metadados e qualidade)' : 'Informações da imagem (metadados e perfil de cor)';
-    infoBtn.setAttribute('aria-label', item.isVideo ? 'Informações do vídeo' : 'Informações da imagem');
+    infoBtn.title = item.isPdf ? 'Informações do PDF (metadados, páginas e tamanhos)' : (item.isVideo ? 'Informações do vídeo (metadados e qualidade)' : 'Informações da imagem (metadados e perfil de cor)');
+    infoBtn.setAttribute('aria-label', item.isPdf ? 'Informações do PDF' : (item.isVideo ? 'Informações do vídeo' : 'Informações da imagem'));
     infoBtn.setAttribute('aria-expanded', 'false');
     infoBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.4" stroke="currentColor" stroke-width="1.4"/><path d="M8 7.2v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="4.9" r="0.9" fill="currentColor"/></svg>';
     infoBtn.addEventListener('click', (ev) => { ev.stopPropagation(); bvToggleInfo(el, item, infoBtn); });
@@ -7901,7 +9304,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     const zoomBox = mk('div');
     zoomBox.className = 'bv-zoom';
     const effectiveZoomPct = () => {
-      if (bv.zoom !== 'fit') return Number(bv.zoom) || 100;
+      if (bv.zoom !== 'fit' && bv.zoom !== 'auto') return Number(bv.zoom) || 100;
       const stg = el.querySelector('.bv-stage');
       if (!bv.natW || !stg) return 100;
       return Math.max(25, Math.min(300, Math.round((bvScaledWidth(bv.natW, stg, bv.natH) / bv.natW) * 100)));
@@ -7922,9 +9325,12 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     const zVal = mk('button');
     zVal.type = 'button';
     zVal.className = 'bv-icon-btn bv-zoom-val';
-    zVal.textContent = bv.zoom === 'fit' ? 'Ajustar' : (bv.zoom === '100' ? '1:1 (100%)' : `${bv.zoom}%`);
-    zVal.title = 'Alternar entre 1:1 (100%) e Ajustar à largura (ou duplo clique na imagem)';
-    zVal.addEventListener('click', () => bvToggleFitZoom(el));
+    zVal.textContent = bvZoomLabel();
+    zVal.title = 'Alternar entre Auto, Ajustar e 1:1 (100%) · duplo clique na imagem alterna 1:1 ↔ Ajustar';
+    zVal.addEventListener('click', () => {
+      bv.zoom = bv.zoom === 'auto' ? 'fit' : (bv.zoom === 'fit' ? '100' : 'auto');
+      bvApplyZoomToStage(el, true);
+    });
 
     const zIn = mk('button');
     zIn.type = 'button';
@@ -8002,6 +9408,25 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     closeBtn.addEventListener('click', closeBetaViewer);
 
     acts.appendChild(bgBtn);
+    try {
+      const act = bvActTarget(item);
+      const canMod = !!(act && act.li.querySelector('.attachment-delete a[href]'));
+      const what = item.zip ? 'o zip' : 'o arquivo';
+      const noPerm = 'Sem permissão para alterar este anexo';
+      const mkAct = (cls, icon, label, title, onClick, disabled) => {
+        const b = mk('button');
+        b.type = 'button';
+        b.className = `bv-icon-btn ${cls}`;
+        b.innerHTML = `${icon}<span>${label}</span>`;
+        b.title = title;
+        b.disabled = !!disabled;
+        b.addEventListener('click', onClick);
+        return b;
+      };
+      acts.appendChild(mkAct('bv-act-rn', ICON_RENAME, 'Renomear', canMod ? `Renomear ${what}` : noPerm, () => bvStartRename(titleEl, item), !canMod));
+      acts.appendChild(mkAct('bv-act-del', ICON_TRASH, 'Deletar', canMod ? `Deletar ${what}` : noPerm, () => bvDeleteItem(item), !canMod));
+      acts.appendChild(mkAct('bv-act-dl', ICON_DL, 'Baixar', `Baixar ${what}`, () => bvDownloadItem(item), false));
+    } catch (e) { bvActLog(e); }
     acts.appendChild(citeBtn);
     acts.appendChild(openOrig);
     acts.appendChild(closeBtn);
@@ -8161,6 +9586,8 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
               showToast('Não foi possível reproduzir este vídeo (formato não suportado pelo navegador)', 3500);
             });
             vid.src = item.fullUrl;
+            vid.addEventListener('timeupdate', () => { try { vidPos.set(vidKey, vidNew.currentTime); } catch {} });
+            vid.addEventListener('ended', () => { try { vidPos.set(vidKey, 0); } catch {} });
             bvVideoCache.set(vidKey, vid);
             while (bvVideoCache.size > 4) {
               const oldKey = bvVideoCache.keys().next().value;
@@ -8183,8 +9610,21 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
           if (vid.readyState >= 1) applyVidMeta();
           else vid.addEventListener('loadedmetadata', applyVidMeta, { once: true });
           wrap.appendChild(vid);
+          try {
+            vidStop();
+            const t0 = vidPos.get(item.id) || 0;
+            const jump = () => {
+              if (t0 > 0.5 && Math.abs(vid.currentTime - t0) > 0.5) vid.currentTime = Math.max(0, Math.min(t0, (vid.duration || t0 + 1) - 0.2));
+            };
+            if (vid.readyState >= 1) jump(); else vid.addEventListener('loadedmetadata', jump, { once: true });
+            const pr = vid.play();
+            if (pr && pr.catch) pr.catch(() => {});
+          } catch (e) { vidWarn(e); }
         } catch (e) { diag({ where: 'video-viewer', error: String(e && (e.stack || e.message) || e).slice(0, 500) }); }
+      } else if (item.isPdf) {
+        try { bvPdfMount(wrap, item, metaEl, idx, items.length); } catch (e) { bvPdfWarn(e, 'pdf-mount'); }
       } else {
+        wrap.classList.add('bv-wrap-c');
         bvBindImgFallback(img, item);
         wrap.appendChild(img);
       }
@@ -8407,6 +9847,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     }
 
     el.appendChild(stage);
+    bvEnablePan(stage);
 
     // 4. Bottom Thumbnail Strip (all attached images with checkboxes, max 2 for comparator)
     const strip = mk('div');
@@ -8465,14 +9906,16 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
         const chk = mk('input');
         chk.type = 'checkbox';
         chk.checked = isChecked;
-        chk.disabled = !isChecked && checkedIds.length >= 2;
+        chk.disabled = (!isChecked && checkedIds.length >= 2) || !!it.isPdf;
         const chkTip = isChecked
           ? `Remover ${it.file} da comparação`
           : (checkedIds.length >= 2
             ? 'Apenas 2 imagens podem ser comparadas por vez'
             : `Marcar ${it.file} para comparar`);
-        chkLabel.title = chkTip;
-        chk.setAttribute('aria-label', chkTip);
+        const chkTipF = it.isPdf ? 'PDFs não entram na comparação' : chkTip;
+        chkLabel.title = chkTipF;
+        chk.setAttribute('aria-label', chkTipF);
+        if (it.isPdf) chkLabel.style.display = 'none';
         chkLabel.addEventListener('click', (ev) => ev.stopPropagation());
         chk.addEventListener('change', (ev) => {
           ev.stopPropagation();
@@ -9902,6 +11345,8 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
         f.last = n;
       }
       let S = Math.max(P.sMin, Math.min(P.sMax, Math.floor((W - P.gap * (n - 1)) / n)));
+      // anexo unico (1 por linha) no automatico: nao estica ate o teto, fica em no maximo 360px de largura (~261px de altura)
+      if (n === 1 && !user) S = Math.min(S, 360);
       // anti-vai-e-volta: se so sobrou um espaco pequeno (ex.: barra de rolagem sumiu), mantem o tamanho
       // anterior, que ainda cabe. Encolher quando falta espaco continua imediato.
       const st = perRowInfo;
@@ -10188,7 +11633,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
         + '<span class="uhub-att-selcount" aria-live="polite"></span>'
         + `<button type="button" class="uhub-att-selbtn uhub-att-selcmp" title="Comparar imagens selecionadas">${ICON_EYE}<span>Comparar</span></button>`
         + `<button type="button" class="uhub-att-selbtn uhub-att-selcite" title="Citar os selecionados no novo comentário">${ICON_CITE}<span>Citar</span></button>`
-        + '<button type="button" class="uhub-att-selbtn uhub-att-seldel" title="Excluir os selecionados"><span class="aui-icon aui-icon-small aui-iconfont-delete" aria-hidden="true"></span><span>Excluir</span></button>'
+        + `<button type="button" class="uhub-att-selbtn uhub-att-seldel" title="Excluir os selecionados">${ICON_TRASH}<span>Excluir</span></button>`
         + '<button type="button" class="uhub-att-selclear" title="Limpar seleção (Esc)" aria-label="Limpar seleção"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>';
       bar.__uhubLive = true;
       ['pointerdown', 'mousedown', 'keydown'].forEach((t) => bar.addEventListener(t, (ev) => ev.stopPropagation()));
@@ -10388,7 +11833,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     delAll.className = 'uhub-att-delall';
     delAll.title = 'Excluir todos os anexos';
     delAll.setAttribute('aria-label', 'Excluir todos os anexos');
-    delAll.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.2c.05.7.6 1.3 1.3 1.3h4c.7 0 1.25-.6 1.3-1.3L12 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.7 6.8v5M9.3 6.8v5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+    delAll.innerHTML = ICON_TRASH;
     delAll.hidden = !attachmentIds().length;
     delAll.addEventListener('click', (ev) => {
       ev.preventDefault();
