@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jira Uhub - Layout pra Internal Review
 // @namespace    https://jira.uhub.biz/
-// @version      6.35.0
+// @version      6.40.0
 // @description  Layout otimizado e responsivo para issues Internal Review (barra de resumo editavel, painel flutuante de metadados, anexos em largura total e coluna de comentarios), com atualizacao automatica, notificacoes e indicador de status.
 // @author       Efra
 // @match        https://jira.uhub.biz/browse/*
@@ -96,6 +96,7 @@ const gid = (i) => document.getElementById(i), q1 = (q) => document.querySelecto
   }
   function ensure() {
     try {
+      if (!document.documentElement.classList.contains('uhub-wide')) return; // só em Internal Review
       const key = keyLink();
       if (!key) return;
       if (key.nextElementSibling && key.nextElementSibling.id === ID) return;
@@ -225,6 +226,7 @@ function uhubTo24h(str, loose) {
   }
   try {
     const mo = new MutationObserver((muts) => {
+      if (!document.documentElement.classList.contains('uhub-wide')) return; // só em Internal Review
       for (const m of muts) {
         if (m.type === 'characterData') fixText(m.target);
         else if (m.type === 'attributes') fixTitle(m.target);
@@ -233,7 +235,7 @@ function uhubTo24h(str, loose) {
     });
     const start = () => {
       mo.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: TITLE_ATTRS });
-      fixTree(document.documentElement);
+      if (document.documentElement.classList.contains('uhub-wide')) fixTree(document.documentElement);
     };
     if (document.documentElement) start();
     else document.addEventListener('readystatechange', start, { once: true });
@@ -423,6 +425,7 @@ html.uhub-comments-collapsed #uhub-sidebar-header #uhub-settings-btn { display: 
 #uhub-settings-panel .sp-item-reset:hover:not(:disabled) { background: rgba(9, 30, 66, 0.08); color: #172b4d }
 #uhub-settings-panel .sp-item-reset:disabled { opacity: 0.28; cursor: default }
 #uhub-settings-panel .sp-item-reset:focus-visible { outline: 2px solid #4c9aff; outline-offset: 1px }
+#uhub-settings-panel .sp-beta-tag { display: inline-block; vertical-align: middle; margin-left: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; background: #deebff; color: #044099 }
 /* Sidebar de comentarios: pertence a mesma hierarquia vertical das colunas de conteudo e metadados — comeca abaixo da topbar do Jira (#header) e do cabecalho da issue (header#stalker), nunca ao lado deles. --uhub-header-h e calculada em JS (measureHeaderHeight) e recalculada sempre que a altura do cabecalho muda (titulo que quebra em 2 linhas, redimensionamento da janela, etc). */
 #uhub-sidebar { position: fixed; top: var(--uhub-header-h, 0px); right: var(--uhub-col-gap); width: var(--uhub-sidebar-w); box-sizing: border-box; height: calc(100vh - var(--uhub-header-h, 0px)); background: var(--uhub-bg); border-left: 1px solid var(--uhub-border); box-shadow: var(--uhub-shadow); z-index: max(var(--uhub-z-floor, -100000), var(--uhub-z, 500)); display: flex; flex-direction: column; overflow: hidden; border-radius: 4px; font-family: inherit }
 /* Animacao so no instante de minimizar/restaurar (nada mais e animado: ajustes de posicao sao sempre imediatos) */
@@ -444,6 +447,15 @@ to { transform: rotate(360deg) }
 /* Corpo da sidebar: lista de comentarios rola por baixo do #addcomment fixo no topo. padding-top reserva espaco para nao ficar escondida atras dele (--uhub-addcomment-h, calculada em JS). */
 #uhub-sidebar-scroll { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: calc(4px + var(--uhub-addcomment-h, 60px)) 14px 12px; position: relative }
 html.uhub-comments-collapsed #uhub-sidebar-scroll { display: none }
+#uhub-sidebar-resizer { position: fixed; top: var(--uhub-header-h, 0px); bottom: 0; right: calc(var(--uhub-col-gap) + var(--uhub-edge-off, 0px) + var(--uhub-sidebar-w) - 4px); width: 8px; cursor: ew-resize; touch-action: none; z-index: max(var(--uhub-z-floor, -100000), calc(var(--uhub-z, 500) + 3)) }
+#uhub-sidebar-resizer:hover, #uhub-sidebar-resizer.uhub-dragging { background: rgba(0, 82, 204, 0.25) }
+html:not(.uhub-wide) #uhub-sidebar-resizer, html.uhub-comments-collapsed #uhub-sidebar-resizer, html.uhub-float #uhub-sidebar-resizer, html.uhub-narrow #uhub-sidebar-resizer, html.uhub-cstack #uhub-sidebar-resizer, html.uhub-beta-open #uhub-sidebar-resizer { display: none !important }
+html.uhub-resizing, html.uhub-resizing * { user-select: none !important; cursor: ew-resize !important }
+/* Acima de 3840px: o conteudo abaixo da barra azul fica numa "janela" de 3840px centralizada; so o fundo estica */
+html.uhub-wide #uhub-sidebar { right: calc(var(--uhub-col-gap) + var(--uhub-edge-off, 0px)) }
+html.uhub-wide #addcomment.uhub-pinned-footer { right: calc(var(--uhub-col-gap) + var(--uhub-edge-off, 0px)) !important }
+html.uhub-wide:not(.uhub-beta-open):not(.uhub-comments-collapsed) #uhub-refresh-toast { right: calc(var(--uhub-col-gap) + var(--uhub-edge-off, 0px) + var(--uhub-sidebar-w) / 2) }
+html.uhub-wide.uhub-capped .aui-page-panel { margin-left: var(--uhub-edge-off, 0px) !important; margin-right: var(--uhub-edge-off, 0px) !important }
 /* #addcomment "pinado" no lugar original do DOM Continua filho de .issue-main-column (onde o Jira o criou), mas com position:fixed passa a ser DESENHADO logo abaixo do header "Comentários" da sidebar (topo da coluna) — os comentarios mais recentes ja aparecem no topo da lista (ver "Mais recentes primeiro"), entao o campo de novo comentario faz mais sentido ali perto, em vez de no rodape, longe dos comentarios mais antigos. --uhub-sidebar-content-top = --uhub-header-h (onde a sidebar comeca) + altura do header interno da sidebar (titulo "Comentarios" e botoes), medida dinamicamente (ver watchSidebarHeaderHeight). Isso preserva 100% do JS/listeners nativos do Jira (TinyMCE incluso), que nunca percebem o elemento "saindo" do container original. */
 #addcomment.uhub-pinned-footer { position: fixed !important; left: auto !important; right: var(--uhub-col-gap) !important; bottom: auto !important; top: var(--uhub-sidebar-content-top, 0px) !important; width: var(--uhub-sidebar-w) !important; max-width: var(--uhub-sidebar-w) !important; background: var(--uhub-bg) !important; border-bottom: 1px solid var(--uhub-border) !important; border-left: 1px solid var(--uhub-border) !important; box-shadow: none !important; padding: 10px 14px !important; margin: 0 !important; z-index: max(var(--uhub-z-floor, -100000), calc(var(--uhub-z, 500) + 1)) !important; box-sizing: border-box !important; max-height: 60vh; overflow-y: auto }
 html.uhub-comments-collapsed #addcomment.uhub-pinned-footer { display: none !important }
@@ -471,6 +483,43 @@ html.uhub-overlay-compress #uhub-sidebar-scroll { background: var(--uhub-bg); cl
 #uhub-settings-panel .sp-check > span { flex: 1 1 auto; min-width: 0 }
 #uhub-settings-panel .sp-check input:disabled + span, #uhub-settings-panel input[type="range"]:disabled { opacity: 0.45 }
 #uhub-settings-panel .sp-status { margin-top: 10px; font-size: 11px; color: var(--uhub-text-muted); line-height: 1.4 }
+/* Ajustes: mesmo visual do painel "Detalhes da issue" (cabecalho, secoes com titulo em caixa alta, campos e dicas) */
+#uhub-settings-panel { width: 360px }
+#uhub-settings-panel .sp-header { padding: 12px 18px }
+#uhub-settings-panel .sp-header strong { font-size: 13px; font-weight: 700; color: #172b4d }
+#uhub-settings-panel .sp-body { padding: 0 }
+#uhub-settings-panel .sp-warning { margin: 12px 18px 0 }
+#uhub-settings-panel .sp-section { margin: 0; padding: 14px 18px; border-top: 1px solid #ebecf0 }
+#uhub-settings-panel .sp-warning + .sp-section { border-top: 0 }
+#uhub-settings-panel .sp-section-title { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--uhub-text-muted) }
+#uhub-settings-panel .sp-section-title .sp-beta-tag { margin-left: 0 }
+#uhub-settings-panel .sp-field { margin-bottom: 14px }
+#uhub-settings-panel .sp-check { margin-bottom: 10px }
+#uhub-settings-panel .sp-section > :last-child { margin-bottom: 0 }
+#uhub-settings-panel .sp-footer { background: var(--uhub-bg-subtle) }
+#uhub-settings-panel .sp-footer .sp-reset { background: var(--uhub-bg) }
+/* Ajustes: so 2 tamanhos de texto (14 e 11), botoes com no minimo 30px, painel de 400px */
+#uhub-settings-panel { width: 400px; border-radius: 6px }
+#uhub-settings-panel :where(*) { font-size: 11px !important }
+#uhub-settings-panel .sp-header { padding: 12px 20px; gap: 8px }
+#uhub-settings-panel .sp-header strong { font-size: 14px !important; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em }
+#uhub-settings-panel .sp-header strong span { font-size: 11px !important; letter-spacing: 0; text-transform: none; margin-left: 6px }
+#uhub-settings-panel .sp-header button { width: 30px; height: 30px; margin-right: -6px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto }
+#uhub-settings-panel .sp-section { padding: 16px 20px }
+#uhub-settings-panel .sp-section-title { margin: 0 0 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #172b4d }
+#uhub-settings-panel .sp-field { margin-bottom: 16px }
+#uhub-settings-panel .sp-field label, #uhub-settings-panel .sp-field label > span, #uhub-settings-panel .sp-check, #uhub-settings-panel .sp-check > span, #uhub-settings-panel .sp-field .sp-val { font-size: 14px !important }
+#uhub-settings-panel .sp-field label { font-weight: 500; min-height: 20px; margin-bottom: 8px; gap: 8px }
+#uhub-settings-panel .sp-field .sp-val { font-weight: 700 }
+#uhub-settings-panel .sp-check { gap: 10px; margin-bottom: 12px; line-height: 1.4 }
+#uhub-settings-panel .sp-check input { width: 16px; height: 16px; margin: 2px 0 0 }
+#uhub-settings-panel .sp-field input[type="range"] { height: 20px; margin: 0 }
+#uhub-settings-panel .sp-field .sp-hint, #uhub-settings-panel .sp-section > .sp-hint { margin-top: 6px; line-height: 1.45 }
+#uhub-settings-panel .sp-warning { margin: 12px 20px 0; padding: 8px 12px; line-height: 1.45 }
+#uhub-settings-panel .sp-reset { min-height: 30px; box-sizing: border-box; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; font-weight: 400; text-transform: none; letter-spacing: normal; color: #172b4d }
+#uhub-settings-panel .sp-seg button { min-height: 30px; box-sizing: border-box; font-weight: 400; text-transform: none; letter-spacing: normal }
+#uhub-settings-panel button:not(.sp-item-reset) { font-weight: 400 !important; text-transform: none !important; letter-spacing: normal !important }
+#uhub-settings-panel .sp-item-reset { width: 30px; height: 30px; margin: -6px -8px -6px 0; border-radius: 4px }
 /* Destaque de comentario recem-chegado */
 @keyframes uhub-new-comment-flash { 0% { background-color: #fff4c2; box-shadow: inset 3px 0 0 #044099 }
 70% { background-color: #fff9e0; box-shadow: inset 3px 0 0 #044099 }
@@ -482,6 +531,8 @@ html.uhub-overlay-compress #uhub-sidebar-scroll { background: var(--uhub-bg); cl
 .uhub-copy-btn:hover { background: rgba(9, 30, 66, 0.08); color: #172b4d }
 .uhub-copy-btn.uhub-copied { color: #00875a }
 #uhub-copy-key { width: 20px; height: 20px; margin-left: 4px }
+/* Dica de ouro do Jira (pressione m para comentar): removida */
+.hint-container.overflow-ellipsis { display: none !important }
 /* Copiar link do comentario: ao lado do "Responder" (ou da data) */
 .action-details .uhub-cmt-copy { width: 20px; height: 20px; margin: 0 0 0 4px; vertical-align: middle; position: relative; top: -0.1em }
 .action-details .uhub-cmt-copy svg { width: 14px; height: 14px }
@@ -538,6 +589,9 @@ html.uhub-att #attachmentmodule #attachment_thumbnails .attachment-content dl .a
 #addcomment > .uhub-me-avatar { position: absolute; width: 32px; height: 32px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 1px rgba(9, 30, 66, 0.13); background: #dfe1e6; pointer-events: auto; z-index: 1 }
 #addcomment > .uhub-me-avatar[hidden] { display: none }
 #attachmentmodule_heading .uhub-att-li input[type="range"] { width: 120px; accent-color: var(--uhub-accent); margin: 0 }
+#attachmentmodule_heading .uhub-att-sign { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex: 0 0 auto; color: var(--ds-icon, #42526e) }
+#uhub-att-tip { position: fixed; z-index: 2147483000; max-width: 280px; box-sizing: border-box; padding: 8px 10px; border-radius: 4px; background: #172b4d; color: #ffffff; font-size: 12px; line-height: 1.4; box-shadow: 0 4px 12px rgba(9, 30, 66, 0.3); pointer-events: none }
+#uhub-att-tip[hidden] { display: none !important }
 #attachmentmodule_heading .uhub-att-li .uhub-att-val { min-width: 66px; font-variant-numeric: tabular-nums }
 #attachmentmodule_heading .uhub-att-reset { appearance: none; border: 0; background: transparent; width: 26px; height: 24px; padding: 0; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; color: var(--ds-icon, #42526e); cursor: pointer }
 #attachmentmodule_heading .uhub-att-reset:hover { background: rgba(9, 30, 66, 0.08); color: #172b4d }
@@ -562,6 +616,14 @@ html:not(.uhub-att) .uhub-att-rename { display: none !important }
 #uhub-beta-viewer .bv-act-dl:not(:disabled):hover { background: #e3fcef !important; color: #006644 !important }
 #uhub-beta-viewer .bv-act-del:not(:disabled):hover { background: #ffebe6 !important; color: #bf2600 !important }
 #uhub-beta-viewer .bv-act-rn:disabled, #uhub-beta-viewer .bv-act-del:disabled { opacity: 0.45; cursor: not-allowed }
+#uhub-beta-viewer .bv-icon-btn.bv-ico { width: 28px; padding: 0 }
+#uhub-beta-viewer .bv-act-cite:not(:disabled):hover { background: #deebff !important; border-color: #b3d4ff !important; color: #044099 !important }
+#uhub-beta-viewer .bv-act-rn:not(:disabled):hover { border-color: #ffe380 !important }
+#uhub-beta-viewer .bv-act-dl:not(:disabled):hover { border-color: #abf5d1 !important }
+#uhub-beta-viewer .bv-act-del:not(:disabled):hover { border-color: #ffbdad !important }
+#uhub-beta-viewer .bv-act-open:hover { background: #eae6ff !important; border-color: #c0b6f2 !important; color: #403294 !important }
+#uhub-beta-viewer .bv-act-focus:hover { background: #e6fcff !important; border-color: #79e2f2 !important; color: #008da6 !important }
+#uhub-beta-viewer.bv-focus .bv-top, #uhub-beta-viewer.bv-focus .bv-subbar, #uhub-beta-viewer.bv-focus .bv-strip { display: none !important }
 #uhub-beta-viewer .bv-rn { position: absolute; z-index: 2; display: flex; align-items: center; box-sizing: border-box; min-width: 0; border-radius: 3px; background: #ffffff; box-shadow: inset 0 0 0 2px #4c9aff }
 #uhub-beta-viewer .bv-rn-input { flex: 1 1 auto; min-width: 0; box-sizing: border-box; height: 100%; margin: 0; padding: 0 6px; font: inherit; line-height: normal; border: 0; border-radius: 3px; background: transparent; color: #172b4d; box-shadow: none; outline: 0 }
 #uhub-beta-viewer .bv-rn-ext { flex: 0 0 auto; padding-right: 6px; font: inherit; line-height: normal; color: #42526e }
@@ -633,7 +695,7 @@ html.uhub-att #attachmentmodule #attachment_thumbnails li.uhub-zp-on .attachment
 #uhub-beta-viewer .bv-icon-btn.bv-done { background: #e3fcef; border-color: #abf5d1; color: #006644 }
 #uhub-beta-viewer .bv-icon-btn.bv-close:hover { background: #ffebe6; border-color: #ffbdad; color: #bf2600 }
 #uhub-beta-viewer .bv-title-wrap { min-width: 0; display: flex; flex-direction: column; gap: 1px }
-#uhub-beta-viewer .bv-title { font-weight: 600; font-size: 13px; color: #172b4d; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+#uhub-beta-viewer .bv-title { font-weight: 600; font-size: 13px; color: #172b4d; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; cursor: text }
 #uhub-beta-viewer .bv-meta { font-size: 11px; color: var(--uhub-text-muted); white-space: nowrap; font-variant-numeric: tabular-nums }
 #uhub-beta-viewer .bv-meta-row { display: flex; align-items: center; gap: 5px; min-width: 0 }
 #uhub-beta-viewer .bv-info-btn { appearance: none; border: 0; background: transparent; color: #6b778c; width: 18px; height: 18px; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 auto }
@@ -651,7 +713,11 @@ html.uhub-att #attachmentmodule #attachment_thumbnails li.uhub-zp-on .attachment
 #uhub-beta-viewer .bv-seg button[aria-pressed="true"]:hover { background: var(--uhub-accent-hover); color: #ffffff }
 #uhub-beta-viewer .bv-seg button:disabled { opacity: 0.4; cursor: not-allowed }
 #uhub-beta-viewer .bv-zoom { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto }
-#uhub-beta-viewer .bv-zoom-val { min-width: 68px; text-align: center; color: #172b4d; font-variant-numeric: tabular-nums }
+#uhub-beta-viewer .bv-zoom-val { min-width: 120px; text-align: center; color: #172b4d; font-variant-numeric: tabular-nums }
+#uhub-beta-viewer .bv-zoom .bv-icon-btn:not(.bv-zoom-val) { width: 28px; padding: 0 }
+#uhub-beta-viewer .bv-seg button { font-weight: 600 }
+#uhub-beta-viewer .bv-w-sync { min-width: 164px }
+#uhub-beta-viewer .bv-w-flip { min-width: 252px }
 #uhub-beta-viewer .bv-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 1 1 auto; min-width: 0 }
 #uhub-beta-viewer .bv-subbar { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 20px; padding: 6px 16px; background: var(--uhub-bg-subtle); border-bottom: 1px solid var(--uhub-border); font-size: 12.5px; color: #172b4d }
 #uhub-beta-viewer .bv-subbar[hidden] { display: none !important }
@@ -704,6 +770,15 @@ html.uhub-att #attachmentmodule #attachment_thumbnails li.uhub-zp-on .attachment
 #uhub-beta-viewer .bv-sbs-scroll, #uhub-beta-viewer.bv-light-bg .bv-sbs-scroll { background: transparent }
 #uhub-beta-viewer:not(.bv-light-bg) .bv-sbs-scroll img { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12) }
 #uhub-beta-viewer.bv-light-bg .bv-sbs-scroll img { box-shadow: 0 0 0 1px rgba(9, 30, 66, 0.13) }
+/* Lado a lado: cabecalho vira etiqueta flutuante (igual as da cortina), sem ocupar espaco; a imagem usa o painel todo */
+#uhub-beta-viewer .bv-sbs-pane { position: relative }
+#uhub-beta-viewer .bv-sbs-head { position: absolute; top: 10px; left: 12px; z-index: 5; box-sizing: border-box; height: 32px; min-height: 0; max-width: calc(100% - 40px); padding: 0 8px 0 12px; gap: 6px; justify-content: flex-start; border: 1px solid var(--uhub-border); border-radius: 6px; background: var(--uhub-bg); color: #172b4d; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16); font-size: 13px; font-weight: 600 }
+#uhub-beta-viewer .bv-sbs-pane + .bv-sbs-pane .bv-sbs-head { background: #42526e; border-color: #344563; color: #ffffff }
+#uhub-beta-viewer .bv-sbs-head strong { flex: 0 1 auto; font-size: 13px; color: inherit }
+#uhub-beta-viewer .bv-sbs-head .bv-meta { color: inherit; opacity: 0.75 }
+#uhub-beta-viewer .bv-sbs-head .bv-sbs-rm { color: inherit; opacity: 0.78; margin-left: 2px }
+#uhub-beta-viewer .bv-sbs-head .bv-sbs-rm:hover { opacity: 1; background: rgba(9, 30, 66, 0.14); color: inherit }
+#uhub-beta-viewer .bv-sbs-pane + .bv-sbs-pane .bv-sbs-head .bv-sbs-rm:hover { background: rgba(255, 255, 255, 0.22) }
 /* PDF no visualizador: paginas de cima para baixo + navegador de paginas */
 #uhub-beta-viewer .bv-single-wrap.bv-wrap-c { margin: 0; width: max-content; min-width: 100% }
 #uhub-beta-viewer .bv-pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 14px; user-select: none; -webkit-user-select: none }
@@ -739,7 +814,7 @@ html.uhub-att #attachmentmodule #attachment_thumbnails li.uhub-zp-on .attachment
 /* Faixa inferior de thumbnails no visualizador Beta */
 #uhub-beta-viewer .bv-strip { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 14px; padding: 8px 16px; background: var(--uhub-bg); border-top: 1px solid var(--uhub-border); box-sizing: border-box; min-height: 76px; box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.08) }
 #uhub-beta-viewer .bv-strip[hidden] { display: none !important }
-#uhub-beta-viewer .bv-strip-info { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; max-width: 170px }
+#uhub-beta-viewer .bv-strip-info { flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; width: 170px; max-width: 170px }
 #uhub-beta-viewer .bv-strip-info strong { font-size: 11.5px; font-weight: 600; color: #172b4d }
 #uhub-beta-viewer .bv-strip-info span { font-size: 11px; color: var(--uhub-text-muted); line-height: 1.3 }
 #uhub-beta-viewer .bv-strip-list { flex: 0 1 auto; max-width: calc(100% - 190px); display: flex; align-items: stretch; gap: 8px; overflow-x: auto; padding: 2px 0; min-width: 0 }
@@ -781,6 +856,28 @@ html.uhub-att #attachmentmodule #attachment_thumbnails li.uhub-zp-on .attachment
 #uhub-beta-viewer .bv-strip-item .bv-strip-thumb { flex: 1 1 42px; height: auto; min-height: 0 }
 #uhub-beta-viewer .bv-strip-sec .bv-strip-item { align-self: stretch; min-height: 0 }
 #uhub-beta-viewer .bv-strip-sechead { min-height: 0; overflow: hidden }
+/* Barras do visualizador beta: so fontes 14 e 11, botoes com no minimo 30px, botoes so de icone quadrados, padding 16 */
+#uhub-beta-viewer .bv-top, #uhub-beta-viewer .bv-subbar, #uhub-beta-viewer .bv-strip { padding: 16px; font-size: 14px }
+#uhub-beta-viewer .bv-top { min-height: 0 }
+#uhub-beta-viewer .bv-strip { height: 113px; min-height: 113px; max-height: 113px }
+#uhub-beta-viewer .bv-title { font-size: 14px; line-height: 30px; height: 30px }
+#uhub-beta-viewer .bv-rn { margin-left: -6px; font-weight: 600 }
+#uhub-beta-viewer .bv-top .bv-icon-btn, #uhub-beta-viewer .bv-subbar .bv-icon-btn { box-sizing: border-box; height: 30px; min-width: 30px; font-size: 14px }
+#uhub-beta-viewer .bv-top .bv-icon-btn.bv-ico, #uhub-beta-viewer .bv-top .bv-zoom .bv-icon-btn:not(.bv-zoom-val) { width: 30px; padding: 0; transition: width 0.18s ease, margin-right 0.18s ease }
+#uhub-beta-viewer .bv-top .bv-seg, #uhub-beta-viewer .bv-subbar .bv-seg { border: 0; outline: 1px solid var(--uhub-border); outline-offset: -1px }
+#uhub-beta-viewer .bv-top .bv-seg button, #uhub-beta-viewer .bv-subbar .bv-seg button { height: 30px; font-size: 14px }
+#uhub-beta-viewer .bv-subbar select.bv-select { height: 30px; font-size: 14px }
+#uhub-beta-viewer .bv-subbar .bv-picker-lbl { font-size: 11px }
+#uhub-beta-viewer .bv-strip :is(.bv-strip-info strong, .bv-strip-name, .bv-strip-slot, .bv-strip-zipbadge, .bv-strip-sechead, .bv-strip-sechead-top, .bv-strip-sechead-count) { font-size: 11px }
+#uhub-beta-viewer .bv-strip .bv-strip-sechead { min-height: 30px }
+#uhub-beta-viewer .bv-ico-lbl { flex: 0 0 auto; white-space: nowrap; font-weight: 600; opacity: 1; transition: opacity 0.18s ease 0.05s }
+#uhub-beta-viewer .bv-top .bv-actions .bv-icon-btn.bv-ico { transition: width 0.24s cubic-bezier(0.22, 1, 0.36, 1) }
+#uhub-beta-viewer .bv-seg button.bv-mode-dm { overflow: hidden; transition: width 0.24s cubic-bezier(0.22, 1, 0.36, 1), padding 0.24s cubic-bezier(0.22, 1, 0.36, 1), border-left-width 0.24s ease, opacity 0.2s ease }
+#uhub-beta-viewer .bv-seg button.bv-mode-dm.bv-dm-blink { animation: bv-dm-blink 1s ease-in-out 1 }
+@keyframes bv-dm-blink { 0%, 100% { background-color: transparent } 25%, 75% { background-color: #deebff } 50% { background-color: transparent } }
+#uhub-beta-viewer .bv-meta-row { max-width: 100% }
+#uhub-beta-viewer .bv-meta { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; user-select: text; -webkit-user-select: text; cursor: text }
+#uhub-beta-viewer .bv-sbs-head strong { user-select: text; -webkit-user-select: text; cursor: text }
 /* Versoes agrupadas */
 html.uhub-att #attachment_thumbnails > li.uhub-attg { list-style: none; display: flex; flex-direction: column; gap: 6px; flex: 0 1 auto; min-width: 0; max-width: 100%; margin: 0; padding: 0; isolation: isolate }
 #attachment_thumbnails .uhub-attg-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; min-width: 0 }
@@ -861,7 +958,7 @@ html.uhub-wide dd.uhub-due-dd > #due-date { width: auto !important; flex: 0 1 au
 #uhub-review-chip:hover { background: #cce0ff }
 /* Faixa do modo revisao: Prioridade · Responsavel · Solicitante · Ficar pronto */
 #uhub-review-meta { display: none }
-html.uhub-wide #uhub-review-meta:not([hidden]) { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px 12px; grid-column: 1 / -1; min-width: 0; margin: 0 0 16px; padding: 9px 48px 9px 14px; position: relative; background: var(--uhub-bg-subtle); border: 1px solid var(--uhub-border); border-radius: 6px; box-sizing: border-box; font-size: 14px; line-height: 20px; color: #172b4d; container: uhubrm / inline-size }
+html.uhub-wide #uhub-review-meta:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; grid-column: 1 / -1; min-width: 0; margin: 0 0 16px; padding: 9px 48px 9px 14px; position: relative; background: var(--uhub-bg-subtle); border: 1px solid var(--uhub-border); border-radius: 6px; box-sizing: border-box; font-size: 14px; line-height: 20px; color: #172b4d; container: uhubrm / inline-size }
 html.uhub-wide.uhub-cstack #uhub-review-meta { order: -1 }
 #uhub-review-meta .rm-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; white-space: nowrap }
 #uhub-review-meta .rm-label { flex: 0 0 auto; font-size: 12px; color: var(--uhub-text-muted) }
@@ -888,11 +985,18 @@ html.uhub-wide.uhub-cstack #uhub-review-meta { order: -1 }
 #uhub-review-meta .rm-val img { flex: 0 0 auto; vertical-align: middle }
 #uhub-review-meta .user-hover { display: inline-flex; align-items: center; gap: 6px; min-width: 0 }
 #uhub-review-meta .aui-avatar { flex: 0 0 auto }
-#uhub-meta-info-btn { appearance: none; border: 1px solid transparent; background: transparent; color: var(--uhub-text-muted); width: 26px; height: 26px; padding: 0; margin: 0; position: absolute; top: 9px; right: 14px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 auto; transition: background 0.1s ease, color 0.1s ease }
+#uhub-meta-info-btn { appearance: none; border: 1px solid transparent; background: transparent; color: var(--uhub-text-muted); width: 26px; height: 26px; padding: 0; margin: -13px 0 0; position: absolute; top: 50%; right: 14px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 auto; transition: background 0.1s ease, color 0.1s ease }
 #uhub-meta-info-btn:hover { background: rgba(9, 30, 66, 0.08); color: #172b4d }
 #uhub-meta-info-btn.uhub-active { background: #deebff; color: #044099; border-color: rgba(4, 64, 153, 0.25) }
 #uhub-meta-info-btn:focus-visible { outline: 2px solid #4c9aff; outline-offset: 1px }
 #uhub-meta-info-btn[hidden] { display: none !important }
+#uhub-review-meta.uhub-rm-two .rm-item { flex: 1 1 calc(50% - 6px); flex-direction: column; align-items: flex-start; gap: 8px }
+#uhub-review-meta.uhub-rm-two .rm-item .rm-label { font-size: 11px; font-weight: 600; line-height: 1 }
+#uhub-review-meta.uhub-rm-two .rm-item .rm-val { min-width: 0 }
+#uhub-review-meta.uhub-rm-two .rm-priority { order: 1 }
+#uhub-review-meta.uhub-rm-two .rm-reporter { order: 2 }
+#uhub-review-meta.uhub-rm-two .rm-due { order: 3 }
+html.uhub-wide #opsbar-comment-issue_container { display: none !important }
 #uhub-review-chip:focus-visible { outline: 2px solid #4c9aff; outline-offset: 1px }
 html:not(.uhub-review) #uhub-review-chip { display: none !important }
 html.uhub-wide.uhub-review .issue-main-column > *:not(#addcomment):not(:has(#addcomment)), html.uhub-wide.uhub-review:not(.uhub-meta-open) #viewissuesidebar { display: none !important }
@@ -914,6 +1018,7 @@ html.uhub-wide header#stalker .aui-toolbar2-inner::before, html.uhub-wide header
 html.uhub-wide header#stalker .aui-toolbar2-primary, html.uhub-wide header#stalker .aui-toolbar2-secondary { display: contents !important }
 html.uhub-wide header#stalker .aui-toolbar2-primary > li, html.uhub-wide header#stalker .aui-toolbar2-secondary > * { float: none !important; margin: 0 !important }
 html.uhub-wide header#stalker .aui-toolbar2-primary > li:not(:has(*)) { display: none !important }
+html.uhub-wide header#stalker #uhub-notify-status_container { order: 99 }
 html.uhub-wide header#stalker .aui-page-header-main { min-width: 0; flex: 1 1 auto }
 html.uhub-wide header#stalker .aui-page-header-actions:not(:has(#issue-header-pager *)) { display: none !important }
 @media (max-width: 600px) { html.uhub-wide header#stalker #summary-val :is(h1, h2) { font-size: 20px; line-height: 1.25 } html.uhub-wide header#stalker .aui-page-header-image .aui-avatar, html.uhub-wide header#stalker .aui-page-header-image .aui-avatar-inner, html.uhub-wide header#stalker .aui-page-header-image img { width: 32px !important; height: 32px !important } html.uhub-wide header#stalker .aui-page-header-image { width: 32px } html.uhub-wide header#stalker .aui-page-header-main { padding-left: 8px } }
@@ -1082,6 +1187,10 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       root.classList.add('uhub-anim');
       clearTimeout(setCollapsed._t);
       setCollapsed._t = setTimeout(() => root.classList.remove('uhub-anim'), 260);
+      try {
+        const w0 = parseFloat(root.style.getPropertyValue('--uhub-att-w'));
+        if (w0 > 0) { perRowInfo.hold = w0; perRowInfo.holdWin = window.innerWidth; }
+      } catch (e) { perRowLog(e); }
       root.classList.toggle('uhub-comments-collapsed', collapsed);
       applyResponsive();
       syncCollapseBtn();
@@ -1145,32 +1254,33 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
   // toda. - Se o conteudo principal ficar com menos de 480px, os metadados descem para baixo da Descricao, na
   // largura total.
   const LAYOUT = { gap: 24, edge: 24, chatMin: 360, mainMinDock: 600, floatTopOffset: 46 };
+  const MAX_CONTENT_W = 3840;
+  const DOCK_MIN_W = 1920;
   function computeLayout() {
     const root = document.documentElement;
     const W = root.clientWidth || window.innerWidth;
+    // acima de 3840px o conteudo fica centralizado numa "janela" de 3840px; so o fundo estica
+    const Wc = Math.min(W, MAX_CONTENT_W);
+    const off = Math.max(0, Math.floor((W - Wc) / 2));
     const navW = root.classList.contains('uhub-nav-collapsed') ? NAV_COLLAPSED_WIDTH : 280;
-    const avail = W - navW - 32;
+    const avail = Wc - navW - 32;
     const collapsed = root.classList.contains('uhub-comments-collapsed');
-    const S = settings.sidebarWidth;
-    let mode = W >= settings.dockMinWidth ? 'dock' : 'float';
-    let chatW;
-    let content;
-    let main;
-    if (mode === 'dock') {
-      const maxChat = avail - LAYOUT.edge - LAYOUT.gap - LAYOUT.mainMinDock;
-      chatW = Math.round(Math.max(LAYOUT.chatMin, Math.min(S, maxChat)));
-      content = avail - (collapsed ? 0 : chatW + LAYOUT.gap) - LAYOUT.edge;
-      main = content;
-      if (!collapsed && main < LAYOUT.mainMinDock) mode = 'float';
-    }
-    if (mode === 'float') {
-      // equilibrado: o painel fica com ~42% (min. 360px, max. a largura escolhida) e o conteudo, ao lado, com o resto
-      chatW = Math.round(Math.max(LAYOUT.chatMin, Math.min(S, (W - navW) * 0.42)));
-      chatW = Math.max(240, Math.min(chatW, W - LAYOUT.gap * 2));
-      content = avail - LAYOUT.edge;
-      main = content;
-    }
-    return { W, mode, chatW, content, main };
+    const fullW = collapsed || root.classList.contains('uhub-narrow') || root.classList.contains('uhub-cstack');
+    // metades iguais: conteudo (esquerda) e comentarios (direita) com a mesma largura
+    // (borda esquerda 16px + respiro entre colunas 24px + borda direita 24px = 64px)
+    const half = Math.floor((Wc - navW - 64) / 2);
+    const mode = W >= DOCK_MIN_W ? 'dock' : 'float';
+    let chatW = Math.max(240, Math.min(Math.max(LAYOUT.chatMin, half), Wc - LAYOUT.gap * 2));
+    const defW = chatW;
+    let content = fullW ? avail - LAYOUT.edge : half;
+    try {
+      const u = chatUserW();
+      if (u && mode === 'dock') {
+        chatW = Math.round(Math.max(Math.min(Wc / 3, 640), Math.min(Wc * 0.6, Wc - LAYOUT.gap * 2, u)));
+        if (!fullW) content = Math.max(240, Wc - navW - 64 - chatW);
+      }
+    } catch (e) { try { diag({ kind: 'chat-resize', msg: String((e && e.message) || e) }); } catch {} }
+    return { W, Wc, off, mode, chatW, defW, content, main: content };
   }
   // Telas estreitas (< NARROW_W): o painel de comentarios vira uma gaveta que abre minimizada (o titulo e o
   // conteudo usam a largura toda) ou, se escolhido em Ajustes, uma secao normal abaixo dos anexos (Empilhar).
@@ -1219,6 +1329,133 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     placeSidebar();
     if (prev && typeof measureHeaderHeight === 'function' && state.applied) setTimeout(() => { try { measureHeaderHeight(); measureEdgeFix(); placeMyAvatar(); } catch {} }, 0);
   }
+  // Alça na borda esquerda dos comentários: arrastar muda a largura, clique duplo volta ao padrão
+  function chatUserW() {
+    if (chatUserW.v === undefined) { try { chatUserW.v = Number(GM_getValue('uhub-chat-w', 0)) || 0; } catch (e) { chatUserW.v = 0; } }
+    return chatUserW.v;
+  }
+  function chatResizeLog(e) { try { diag({ kind: 'chat-resize', msg: String((e && e.message) || e) }); } catch {} }
+  function chatBounds() {
+    const root = document.documentElement;
+    const W = root.clientWidth || window.innerWidth;
+    const Wc = Math.min(W, MAX_CONTENT_W);
+    return { min: Math.round(Math.min(Wc / 3, 640)), max: Math.round(Math.min(Wc * 0.6, Wc - LAYOUT.gap * 2)) };
+  }
+  function syncChatField() {
+    try {
+      const f = q1('#uhub-settings-panel .sp-field[data-chatw]');
+      if (!f) return;
+      const inp = f.querySelector('input[type="range"]');
+      const val = f.querySelector('.sp-val');
+      const hint = f.querySelector('.sp-hint');
+      if (!inp || !val || !hint) return;
+      const root = document.documentElement;
+      const L = computeLayout();
+      const b = chatBounds();
+      inp.min = b.min;
+      inp.max = b.max;
+      inp.value = L.chatW;
+      val.textContent = `${L.chatW}px`;
+      inp.disabled = L.mode !== 'dock' || root.classList.contains('uhub-narrow') || root.classList.contains('uhub-cstack');
+      const txt = inp.disabled
+        ? 'Disponível em telas a partir de 1920px.'
+        : 'Também dá para arrastar a borda esquerda dos comentários; clique duplo restaura o padrão.';
+      if (hint.textContent !== txt) hint.textContent = txt;
+      syncAllResetButtons();
+    } catch (e) { chatResizeLog(e); }
+  }
+  function buildChatWidthField() {
+    const field = mk('div');
+    field.className = 'sp-field';
+    field.dataset.chatw = '1';
+    const lb = mk('label');
+    const t = mk('span');
+    t.textContent = 'Largura dos comentários';
+    const val = mk('span');
+    val.className = 'sp-val';
+    lb.appendChild(t);
+    lb.appendChild(val);
+    lb.appendChild(makeParamResetButton('chatWidth', 'metade da tela'));
+    const inp = mk('input');
+    inp.type = 'range';
+    inp.step = 1;
+    inp.addEventListener('input', () => {
+      try { chatUserW.v = Math.round(Number(inp.value)) || 0; applyResponsive(); } catch (e) { chatResizeLog(e); }
+    });
+    inp.addEventListener('change', () => {
+      try { GM_setValue('uhub-chat-w', chatUserW.v || 0); measureEdgeFix(); } catch (e) { chatResizeLog(e); }
+    });
+    const hint = mk('div');
+    hint.className = 'sp-hint';
+    field.appendChild(lb);
+    field.appendChild(inp);
+    field.appendChild(hint);
+    return field;
+  }
+  function ensureSidebarResizer() {
+    try {
+      if (gid('uhub-sidebar-resizer')) return;
+      if (!gid('uhub-sidebar')) {
+        ensureSidebarResizer.tries = (ensureSidebarResizer.tries || 0) + 1;
+        if (ensureSidebarResizer.tries < 20) setTimeout(() => { try { ensureSidebarResizer(); } catch (e) { chatResizeLog(e); } }, 500);
+        return;
+      }
+      const h = mk('div');
+      h.id = 'uhub-sidebar-resizer';
+      h.title = 'Arraste para mudar a largura • clique duplo para voltar ao padrão';
+      let drag = null;
+      h.addEventListener('pointerdown', (ev) => {
+        try {
+          if (ev.button !== 0) return;
+          ev.preventDefault();
+          drag = { moved: false };
+          h.setPointerCapture(ev.pointerId);
+          h.classList.add('uhub-dragging');
+          document.documentElement.classList.add('uhub-resizing');
+        } catch (e) { chatResizeLog(e); }
+      });
+      h.addEventListener('pointermove', (ev) => {
+        try {
+          if (!drag) return;
+          const root = document.documentElement;
+          const W = root.clientWidth || window.innerWidth;
+          const Wc = Math.min(W, MAX_CONTENT_W);
+          const off = Math.max(0, Math.floor((W - Wc) / 2));
+          const right = W - off - LAYOUT.gap;
+          const w = Math.round(Math.max(Math.min(Wc / 3, 640), Math.min(Wc * 0.6, right - ev.clientX)));
+          if (w === chatUserW.v) return;
+          drag.moved = true;
+          chatUserW.v = w;
+          applyResponsive();
+        } catch (e) { chatResizeLog(e); }
+      });
+      const end = (ev) => {
+        try {
+          if (!drag) return;
+          const moved = drag.moved;
+          drag = null;
+          h.classList.remove('uhub-dragging');
+          document.documentElement.classList.remove('uhub-resizing');
+          try { h.releasePointerCapture(ev.pointerId); } catch {}
+          if (moved) {
+            GM_setValue('uhub-chat-w', chatUserW.v);
+            try { measureEdgeFix(); } catch {}
+          }
+        } catch (e) { chatResizeLog(e); }
+      };
+      h.addEventListener('pointerup', end);
+      h.addEventListener('pointercancel', end);
+      h.addEventListener('dblclick', () => {
+        try {
+          chatUserW.v = 0;
+          GM_setValue('uhub-chat-w', 0);
+          applyResponsive();
+          try { measureEdgeFix(); } catch {}
+        } catch (e) { chatResizeLog(e); }
+      });
+      document.body.appendChild(h);
+    } catch (e) { chatResizeLog(e); }
+  }
   let lastLayout = null;
   function applyResponsive() {
     const root = document.documentElement;
@@ -1227,9 +1464,13 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     lastLayout = L;
     const set = (k, v) => { if (root.style.getPropertyValue(k) !== v) root.style.setProperty(k, v); };
     set('--uhub-sidebar-w', `${L.chatW}px`);
+    set('--uhub-edge-off', `${L.off}px`);
+    root.classList.toggle('uhub-capped', L.off > 0);
     const wasFloat = root.classList.contains('uhub-float');
     root.classList.toggle('uhub-float', L.mode === 'float');
     if (wasFloat !== (L.mode === 'float') && typeof measureHeaderHeight === 'function' && state.applied) measureHeaderHeight();
+    try { ensureSidebarResizer(); } catch (e) { chatResizeLog(e); }
+    syncChatField();
     return L;
   }
   function applyColumnWidths() {
@@ -1254,14 +1495,20 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
   }
   const ICON_RESET_PARAM = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.7-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M2.2 1.8v3.6h3.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   function isParamDefault(key) {
+    if (key === 'chatWidth') return !chatUserW();
+    if (key === 'sidebarWidth' || key === 'dockMinWidth') return true; // não são mais configuráveis
     if (key in DEFAULTS) return settings[key] === DEFAULTS[key];
     if (key in AUTO_DEFAULTS) return prefs[key] === AUTO_DEFAULTS[key];
     return true;
   }
   function areAllParamsDefault() {
-    return Object.keys(DEFAULTS).every(isParamDefault) && Object.keys(AUTO_DEFAULTS).every(isParamDefault);
+    return Object.keys(DEFAULTS).every(isParamDefault) && Object.keys(AUTO_DEFAULTS).every(isParamDefault) && isParamDefault('chatWidth');
   }
   function resetParam(key) {
+    if (key === 'chatWidth') {
+      try { chatUserW.v = 0; GM_setValue('uhub-chat-w', 0); applyResponsive(); measureEdgeFix(); } catch (e) { chatResizeLog(e); }
+      return;
+    }
     if (key === 'dockMinWidth' || key === 'sidebarWidth') {
       settings[key] = saveSetting(key, DEFAULTS[key]);
       applyColumnWidths();
@@ -1300,6 +1547,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     }
   }
   function resetAllParams() {
+    try { chatUserW.v = 0; GM_setValue('uhub-chat-w', 0); } catch (e) { chatResizeLog(e); }
     Object.keys(DEFAULTS).forEach((k) => { settings[k] = saveSetting(k, DEFAULTS[k]); });
     Object.keys(AUTO_DEFAULTS).forEach((k) => { savePref(k, AUTO_DEFAULTS[k]); });
     applyColumnWidths();
@@ -1360,19 +1608,12 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     warning.id = 'uhub-settings-warning';
     warning.className = 'sp-warning';
     body.appendChild(warning);
-    body.appendChild(buildSliderField({
-      key: 'dockMinWidth',
-      label: 'Comentários flutuam abaixo de',
-      defaultLabel: `${DEFAULTS.dockMinWidth}px`,
-      hint: 'Largura de tela abaixo da qual os comentários viram um painel flutuante por cima da página (padrão 1880px). Em telas maiores, ficam como 3ª coluna.',
-    }));
-    body.appendChild(buildSliderField({
-      key: 'sidebarWidth',
-      label: 'Largura máxima dos comentários',
-      defaultLabel: `${DEFAULTS.sidebarWidth}px`,
-      hint: 'Até 1200px. Se a tela não comportar, encolhe sozinha (mín. 360px) para não esconder o conteúdo.',
-    }));
-    body.appendChild(buildChoiceField({
+    const layoutSec = mk('div');
+    layoutSec.className = 'sp-section';
+    layoutSec.innerHTML = '<div class="sp-section-title">Comentários</div>';
+    body.appendChild(layoutSec);
+    layoutSec.appendChild(buildChatWidthField());
+    layoutSec.appendChild(buildChoiceField({
       key: 'narrowLayout',
       label: `Comentários em telas estreitas (< ${NARROW_W}px)`,
       defaultLabel: 'Gaveta',
@@ -1390,11 +1631,15 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     resetBtn.textContent = 'Restaurar tudo';
     resetBtn.disabled = areAllParamsDefault();
     resetBtn.addEventListener('click', resetAllParams);
-    body.appendChild(resetBtn);
-    body.appendChild(buildAttachmentSection());
+
+
     body.appendChild(buildAutoRefreshSection());
     body.appendChild(buildBetaSection());
     body.appendChild(buildDiagnosticsSection());
+    const footer = mk('div');
+    footer.className = 'sp-section sp-footer';
+    footer.appendChild(resetBtn);
+    body.appendChild(footer);
     panel.appendChild(header);
     panel.appendChild(body);
     document.body.appendChild(panel);
@@ -1402,7 +1647,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
   function buildBetaSection() {
     const wrap = mk('div');
     wrap.className = 'sp-section';
-    wrap.innerHTML = '<div class="sp-section-title">Visualizador 1:1 e comparador (Beta)</div>';
+    wrap.innerHTML = '<div class="sp-section-title">Visualizador 1:1 e comparador <span class="sp-beta-tag">Beta</span></div>';
     const bv = buildCheckboxRow('betaViewer', 'Ativar leitor vertical 1:1 e comparador de imagens nos anexos');
     bv.input.addEventListener('change', () => {
       savePref('betaViewer', bv.input.checked);
@@ -1551,7 +1796,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       btn.classList.toggle('uhub-active', shouldOpen);
       btn.setAttribute('aria-expanded', String(shouldOpen));
     }
-    if (shouldOpen) updateSettingsWarning();
+    if (shouldOpen) { updateSettingsWarning(); syncChatField(); }
   }
   // ---------- Engrenagem de Ajustes na topbar do Jira ----------
   const ICON_SETTINGS_HEADER = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"></path></svg>';
@@ -1609,14 +1854,14 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
         'Atualizar tudo sem recarregar a página', 'Atualizar tudo (sem recarregar a página)',
         ICON_REFRESH_HEADER, onRefreshBtnClick);
       const gearLi = makeHeaderLink('uhub-settings-btn', 'uhub-settings-header-item',
-        'Ajustes do layout 3 colunas', 'Ajustes do layout (larguras, atualização e notificações)',
+        'Ajustes do Layout Enhanced', 'Ajustes do layout (larguras, atualização e notificações)',
         ICON_SETTINGS_HEADER, onSettingsBtnClick);
       gearLi.firstChild.setAttribute('aria-expanded', 'false');
       const reviewLi = makeHeaderLink('uhub-review-btn', 'uhub-review-header-item',
         'Modo revisão', 'Modo revisão: só os anexos (grandes) e os comentários. Clique de novo ou Esc para voltar.',
         ICON_REVIEW_HEADER, onReviewBtnClick);
       const toggleLi = makeHeaderLink('uhub-layout-toggle', 'uhub-layout-toggle-item',
-        'Alternar layout otimizado', 'Layout 3 colunas ativado (clique para voltar ao padrão do Jira)',
+        'Alternar layout otimizado', 'Layout Enhanced ativado (clique para voltar ao padrão do Jira)',
         ICON_LAYOUT_TOGGLE_ON, onLayoutToggleClick);
       ul.appendChild(reviewLi);
       ul.appendChild(refreshLi);
@@ -1745,7 +1990,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     sendCheck: loadPref('sendCheck'),
     narrowLayout: loadPref('narrowLayout'),
     betaViewer: loadPref('betaViewer'),
-    sharedPolling: loadPref('sharedPolling'),
+    sharedPolling: true, // sempre ativa (não configurável)
   };
   const auto = {
     timer: null,
@@ -3465,7 +3710,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
   function buildAutoRefreshSection() {
     const wrap = mk('div');
     wrap.className = 'sp-section';
-    wrap.innerHTML = '<div class="sp-section-title">Atualização de comentários</div>';
+    wrap.innerHTML = '<div class="sp-section-title">Atualização e notificações</div>';
     const auto1 = buildCheckboxRow('autoRefresh', 'Atualizar automaticamente');
     auto1.input.addEventListener('change', () => {
       savePref('autoRefresh', auto1.input.checked);
@@ -3480,9 +3725,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       interval.input.disabled = !prefs.autoRefresh;
     });
     wrap.appendChild(auto1.row);
-    const hubChk = buildCheckboxRow('sharedPolling', 'Compartilhar a verificação entre abas (uma aba pergunta ao Jira por todas)');
-    hubChk.input.addEventListener('change', () => savePref('sharedPolling', hubChk.input.checked));
-    wrap.appendChild(hubChk.row);
+
     const interval = mk('div');
     interval.className = 'sp-field';
     const lbl = mk('label');
@@ -4059,8 +4302,8 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     const icon = on ? ICON_LAYOUT_TOGGLE_ON : ICON_LAYOUT_TOGGLE_OFF;
     if (btn.innerHTML !== icon) btn.innerHTML = icon;
     const title = on
-      ? 'Layout 3 colunas ativado (clique para voltar ao layout padrão do Jira)'
-      : 'Layout padrão do Jira (clique para ativar o layout 3 colunas)';
+      ? 'Layout Enhanced ativado (clique para voltar ao layout padrão do Jira)'
+      : 'Layout padrão do Jira (clique para ativar o Layout Enhanced)';
     if (btn.title !== title) {
       btn.title = title;
       btn.setAttribute('aria-label', title);
@@ -4152,17 +4395,49 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     const gap = 24;
     const collapsed = root.classList.contains('uhub-comments-collapsed');
     const floating = root.classList.contains('uhub-float');
-    const L = lastLayout || computeLayout();
+    const L = computeLayout();
+    const off = L.off || 0;
+    const fullW = root.classList.contains('uhub-narrow') || root.classList.contains('uhub-cstack');
     const panelW = collapsed ? 0 : L.chatW + gap;
-    [['.issue-body-content', '--uhub-body-fix', floating ? 0 : panelW], ['header#stalker', '--uhub-stalker-fix', panelW]].forEach(([sel, v, sidebarW]) => {
+    [['.issue-body-content', '--uhub-body-fix', fullW ? 0 : panelW], ['header#stalker', '--uhub-stalker-fix', panelW]].forEach(([sel, v, sidebarW]) => {
       const el = q1(sel);
       if (!el) return;
-      const desiredRight = root.clientWidth - gap - sidebarW;
+      const desiredRight = root.clientWidth - off - gap - sidebarW;
       const cur = parseFloat(root.style.getPropertyValue(v)) || 0;
       const delta = el.getBoundingClientRect().right - desiredRight;
-      if (Math.abs(delta) >= 0.5 && Math.abs(cur + delta) < 40) root.style.setProperty(v, `${Math.round((cur + delta) * 2) / 2}px`);
+      if (Math.abs(delta) >= 0.5 && Math.abs(cur + delta) < 40 + off) root.style.setProperty(v, `${Math.round((cur + delta) * 2) / 2}px`);
     });
   }
+  // Ao mudar a largura da janela (ex.: passar de 3840px), recalcula colunas e folgas na hora
+  window.addEventListener('resize', () => {
+    try {
+      cancelAnimationFrame(window.__uhubEdgeRaf);
+      window.__uhubEdgeRaf = requestAnimationFrame(() => {
+        try {
+          if (!state.applied) return;
+          applyResponsive();
+          measureEdgeFix();
+        } catch (e) { chatResizeLog(e); }
+      });
+    } catch (e) { chatResizeLog(e); }
+  });
+  // Faixa de metadados: vira 2 colunas assim que os itens deixam de caber em uma linha so
+  function rmFit() {
+    try {
+      const strip = gid('uhub-review-meta');
+      if (!strip || strip.hidden || !strip.getClientRects().length) return;
+      if (strip.querySelector('.active')) return;
+      const items = Array.from(strip.querySelectorAll('.rm-item')).filter((el) => el.getClientRects().length);
+      if (items.length < 2) return;
+      const had = strip.classList.contains('uhub-rm-two');
+      if (had) strip.classList.remove('uhub-rm-two');
+      const minBottom = Math.min(...items.map((el) => el.offsetTop + el.offsetHeight));
+      const wrapped = items.some((el) => el.offsetTop >= minBottom - 1);
+      if (wrapped) strip.classList.add('uhub-rm-two');
+    } catch (e) { chatResizeLog(e); }
+  }
+  window.addEventListener('resize', () => { try { requestAnimationFrame(rmFit); } catch (e) { chatResizeLog(e); } });
+  setInterval(rmFit, 600);
   function watchHeaderHeight() {
     measureHeaderHeight();
     measureEdgeFix();
@@ -5444,7 +5719,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       if (!dateLink) return;
       const anchor = dateLink;
       let b = details.querySelector('.uhub-cmt-copy');
-      if (b && b.previousElementSibling === anchor) return;
+      if (b && (b.previousElementSibling === anchor || (b.previousElementSibling && b.previousElementSibling.classList.contains('update-info')))) return;
       if (!b) {
         b = mk('button');
         b.type = 'button';
@@ -6785,7 +7060,8 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       };
       window.addEventListener('keydown', guard, true);
       inp.addEventListener('blur', () => { if (!document.hasFocus()) return; setTimeout(() => done(false), 150); });
-      const tw = Math.min(Math.max(titleEl.offsetWidth, 220), Math.max(120, titleEl.parentNode.clientWidth - titleEl.offsetLeft));
+      const mrow = titleEl.parentNode.querySelector('.bv-meta-row');
+      const tw = (mrow && mrow.offsetWidth) ? Math.max(120, mrow.offsetWidth) : Math.min(Math.max(titleEl.offsetWidth, 220), Math.max(120, titleEl.parentNode.clientWidth - titleEl.offsetLeft));
       wrap.style.left = `${titleEl.offsetLeft}px`;
       wrap.style.top = `${titleEl.offsetTop}px`;
       wrap.style.width = `${tw}px`;
@@ -7063,7 +7339,11 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       } else if (t.classList.contains('uhub-cmt-copy')) {
         const c = t.closest('.activity-comment');
         const link = c && c.querySelector('.action-details a.comment-created-date-link, .action-details a[href*="focusedId="], .action-details a[href*="#comment-"]');
-        const url = link ? new URL(link.getAttribute('href'), location.href).href : '';
+        let url = link ? new URL(link.getAttribute('href'), location.href).href : '';
+        if (!url && c && /^comment-\d+$/.test(c.id) && getIssueKey()) {
+          const cid = c.id.slice(8);
+          url = `${jiraBaseUrl()}/browse/${getIssueKey()}?focusedId=${cid}&page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-${cid}`;
+        }
         if (!url) { showToast('Não foi possível encontrar o link do comentário', 3000); return; }
         copyText(url).then((ok) => {
           if (!ok) { showToast('Não foi possível copiar', 2500); return; }
@@ -7128,6 +7408,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
 
   // Linha de metadados do topo: "por" normal e o nome de quem enviou em negrito
   function bvSetMeta(metaEl, parts, author) {
+    try { parts = Array.from(parts || []).filter((p) => !/^\d+\/\d+$/.test(String(p))); } catch (e) { bvActLog(e); }
     try {
       metaEl.textContent = parts.join(' · ');
       if (author) {
@@ -7960,6 +8241,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-modal', 'true');
     el.setAttribute('aria-label', 'Leitor vertical 1:1 e comparador Beta');
+    try { new MutationObserver(() => { if (el.hidden) el.dataset.bvLive = ''; }).observe(el, { attributes: true, attributeFilter: ['hidden'] }); } catch (e) { bvActLog(e); }
     bvBindOutsideClose(el);
     el.hidden = true;
     document.body.appendChild(el);
@@ -7974,6 +8256,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     }
     el.hidden = true;
     el.innerHTML = '';
+    el.classList.remove('bv-focus');
     bv.open = false;
     document.documentElement.classList.remove('uhub-beta-open');
     try { bvPdfCleanup(false); } catch {}
@@ -8046,6 +8329,35 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
 
   function bvCompareItems() {
     return bv.compareIds.map((id) => bv.items.find((x) => x.id === id)).filter(Boolean).slice(0, 2);
+  }
+  // Comparacao (lado a lado, cortina, alternar): as setas trocam o item B e pulam o A. Se o novo B e video ou PDF, volta ao Leitor e mostra o arquivo sozinho. Devolve true quando tratou a seta.
+  function bvStepCompareB(dir) {
+    try {
+      const pool = bvCompareItems();
+      if (bv.mode !== 'compare' || pool.length !== 2) return false;
+      const items = bv.items;
+      const n = items.length;
+      const a = pool[0];
+      const b = pool[1];
+      const i = items.findIndex((x) => x.id === b.id);
+      if (n < 2 || i < 0) return false;
+      let next = null;
+      for (let s = 1; s <= n; s++) {
+        const cand = items[(((i + dir * s) % n) + n) % n];
+        if (cand.id !== a.id) { next = cand; break; }
+      }
+      if (!next || next.id === b.id) return true;
+      if (next.isVideo || next.isPdf) {
+        showToast('Este arquivo não suporta comparação: mostrando sozinho', 2400);
+        bvSelectImage(next.id);
+        return true;
+      }
+      bv.compareIds = [a.id, next.id];
+      bv.natW = 0;
+      bv.natH = 0;
+      bvRender();
+      return true;
+    } catch (e) { bvActLog(e); return false; }
   }
 
   function bvResolvePair(item) {
@@ -9166,6 +9478,13 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
 
     el.classList.toggle('bv-light-bg', !!bv.lightStage);
     { const oldList = el.querySelector('.bv-strip-list'); bv.stripX = oldList ? oldList.scrollLeft : 0; }
+    let dmAnim = '', dmOldW = 0;
+    try {
+      const live = el.dataset.bvLive === '1';
+      const oldDm = live ? el.querySelector('.bv-top .bv-mode-dm:not(.bv-ghost)') : null;
+      if (live && !!oldDm !== !!dmPair) { dmAnim = dmPair ? 'in' : 'out'; dmOldW = oldDm ? oldDm.offsetWidth : 0; }
+      el.dataset.bvLive = '1';
+    } catch (e) { bvActLog(e); }
     el.innerHTML = '';
 
     // 3. Stage (Declare early so lateral buttons can be appended)
@@ -9191,7 +9510,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     prevBtn.title = 'Imagem anterior (←)';
     prevBtn.setAttribute('aria-label', 'Imagem anterior');
     prevBtn.disabled = items.length <= 1;
-    prevBtn.addEventListener('click', () => bvSelectImage(items[(idx - 1 + items.length) % items.length].id));
+    prevBtn.addEventListener('click', () => { if (!bvStepCompareB(-1)) bvSelectImage(items[(idx - 1 + items.length) % items.length].id); });
 
     const nextBtn = mk('button');
     nextBtn.type = 'button';
@@ -9200,7 +9519,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     nextBtn.title = 'Próxima imagem (→)';
     nextBtn.setAttribute('aria-label', 'Próxima imagem');
     nextBtn.disabled = items.length <= 1;
-    nextBtn.addEventListener('click', () => bvSelectImage(items[(idx + 1) % items.length].id));
+    nextBtn.addEventListener('click', () => { if (!bvStepCompareB(1)) bvSelectImage(items[(idx + 1) % items.length].id); });
 
     stage.appendChild(prevBtn);
     stage.appendChild(nextBtn);
@@ -9287,12 +9606,52 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     modeSeg.appendChild(mkModeBtn('single', 'Leitor 1:1', {
       title: 'Leitura vertical contínua em tamanho real (1:1)',
     }));
-    modeSeg.appendChild(mkModeBtn('dm', 'Light vs Dark', {
-      disabled: !dmPair,
-      title: dmPair
-        ? `Comparar versão Light com ${dmPair.file}`
-        : 'Disponível quando existe outro arquivo com exatamente o mesmo nome + "_dm"',
-    }));
+    if (dmPair) {
+      const dmBtn = mkModeBtn('dm', 'Light vs Dark', { title: `Comparar versão Light com ${dmPair.file}` });
+      dmBtn.classList.add('bv-mode-dm');
+      modeSeg.appendChild(dmBtn);
+      if (dmAnim === 'in') {
+        requestAnimationFrame(() => {
+          try {
+            if (!dmBtn.isConnected) return;
+            const full = dmBtn.offsetWidth;
+            const S = (k, v) => dmBtn.style.setProperty(k, v);
+            const clr = () => ['padding-left', 'padding-right', 'border-left-width', 'opacity'].forEach((k) => dmBtn.style.removeProperty(k));
+            dmBtn.style.transition = 'none';
+            S('width', '0px'); S('padding-left', '0px'); S('padding-right', '0px'); S('border-left-width', '0px'); S('opacity', '0');
+            void dmBtn.offsetWidth;
+            dmBtn.style.removeProperty('transition');
+            S('width', `${full}px`);
+            clr();
+            dmBtn.classList.add('bv-dm-blink');
+            setTimeout(() => { try { dmBtn.style.removeProperty('width'); } catch (e) { bvActLog(e); } }, 280);
+            setTimeout(() => { try { dmBtn.classList.remove('bv-dm-blink'); } catch (e) { bvActLog(e); } }, 1100);
+          } catch (e) { bvActLog(e); }
+        });
+      }
+    } else if (dmAnim === 'out' && dmOldW > 0) {
+      const ghost = mk('button');
+      ghost.type = 'button';
+      ghost.className = 'bv-mode-dm bv-ghost';
+      ghost.textContent = 'Light vs Dark';
+      ghost.tabIndex = -1;
+      ghost.setAttribute('aria-hidden', 'true');
+      ghost.style.width = `${dmOldW}px`;
+      ghost.style.pointerEvents = 'none';
+      modeSeg.appendChild(ghost);
+      requestAnimationFrame(() => {
+        try {
+          if (!ghost.isConnected) return;
+          void ghost.offsetWidth;
+          ghost.style.setProperty('width', '0px');
+          ghost.style.setProperty('padding-left', '0px');
+          ghost.style.setProperty('padding-right', '0px');
+          ghost.style.setProperty('border-left-width', '0px');
+          ghost.style.setProperty('opacity', '0');
+          setTimeout(() => { try { ghost.remove(); } catch (e) { bvActLog(e); } }, 280);
+        } catch (e) { bvActLog(e); }
+      });
+    }
     if (hasCompare) {
       modeSeg.appendChild(mkModeBtn('compare', 'Comparar (2)', {
         title: `Comparar ${cmpPool[0].file} e ${cmpPool[1].file}`,
@@ -9356,7 +9715,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
 
     const bgBtn = mk('button');
     bgBtn.type = 'button';
-    bgBtn.className = 'bv-icon-btn';
+    bgBtn.className = 'bv-icon-btn bv-ico';
     bgBtn.innerHTML = bv.lightStage ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>' : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>';
     bgBtn.title = 'Alternar fundo (claro/escuro)';
     bgBtn.setAttribute('aria-label', bgBtn.title);
@@ -9368,8 +9727,9 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
 
     const citeBtn = mk('button');
     citeBtn.type = 'button';
-    citeBtn.className = 'bv-icon-btn';
-    citeBtn.innerHTML = `${ICON_CITE}<span>Citar</span>`;
+    citeBtn.className = 'bv-icon-btn bv-ico bv-act-cite';
+    citeBtn.innerHTML = ICON_CITE;
+    citeBtn.setAttribute('aria-label', 'Citar');
     citeBtn.title = item.zip ? `Citar o zip ${item.zipFile} no novo comentário` : `Citar ${item.file} no novo comentário`;
     citeBtn.addEventListener('click', () => {
       let ref = { kind: 'attachment', id: item.id, file: item.file, href: item.href };
@@ -9393,12 +9753,63 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     });
 
     const openOrig = mk('a');
-    openOrig.className = 'bv-icon-btn';
+    openOrig.className = 'bv-icon-btn bv-ico bv-act-open';
     openOrig.href = item.href;
     openOrig.target = '_blank';
     openOrig.rel = 'noopener';
-    openOrig.textContent = 'Abrir original ↗';
+    openOrig.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M9 2.5h4.5V7M13.5 2.5l-6 6M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    openOrig.setAttribute('aria-label', 'Abrir original');
     openOrig.title = 'Abrir arquivo original em nova aba';
+
+    const focusBtn = mk('button');
+    focusBtn.type = 'button';
+    focusBtn.className = 'bv-icon-btn bv-ico bv-act-focus';
+    focusBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    focusBtn.title = 'Modo foco: oculta as barras (Esc ou clique fora para sair)';
+    focusBtn.setAttribute('aria-label', 'Modo foco');
+    focusBtn.addEventListener('click', () => {
+      try {
+        if (el.classList.contains('bv-focus')) return;
+        const KEEP = 'button, a, input, select, textarea, label, img, video, canvas, iframe, .bv-pdf-page, .bv-sbs-pane, .bv-curtain-wrap, .bv-pill, .bv-info-pop, [class*="bv-pdf-nav"]';
+        let dn = null;
+        const relayout = () => { requestAnimationFrame(() => { try { bvPositionNavButtons(el); } catch (e) { bvActLog(e); } }); };
+        const off = () => {
+          window.removeEventListener('keydown', onKey, true);
+          window.removeEventListener('mousedown', onDown, true);
+          window.removeEventListener('click', onClick, true);
+          el.classList.remove('bv-focus');
+          relayout();
+        };
+        const alive = () => el.isConnected && !el.hidden && el.classList.contains('bv-focus');
+        const onKey = (ev) => {
+          try {
+            if (!alive()) { off(); return; }
+            if (ev.key !== 'Escape') return;
+            ev.preventDefault();
+            ev.stopImmediatePropagation();
+            off();
+          } catch (e) { bvActLog(e); }
+        };
+        const onDown = (ev) => { dn = { x: ev.clientX, y: ev.clientY }; };
+        const onClick = (ev) => {
+          try {
+            if (!alive()) { off(); return; }
+            const t = ev.target;
+            if (!t || !t.closest || ev.button !== 0 || !el.contains(t)) return;
+            if (t.closest(KEEP)) return;
+            if (dn && Math.abs(ev.clientX - dn.x) + Math.abs(ev.clientY - dn.y) >= 6) return;
+            ev.preventDefault();
+            ev.stopImmediatePropagation();
+            off();
+          } catch (e) { bvActLog(e); }
+        };
+        el.classList.add('bv-focus');
+        window.addEventListener('keydown', onKey, true);
+        window.addEventListener('mousedown', onDown, true);
+        window.addEventListener('click', onClick, true);
+        relayout();
+      } catch (e) { bvActLog(e); }
+    });
 
     const closeBtn = mk('button');
     closeBtn.type = 'button';
@@ -9416,8 +9827,9 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       const mkAct = (cls, icon, label, title, onClick, disabled) => {
         const b = mk('button');
         b.type = 'button';
-        b.className = `bv-icon-btn ${cls}`;
-        b.innerHTML = `${icon}<span>${label}</span>`;
+        b.className = `bv-icon-btn bv-ico ${cls}`;
+        b.innerHTML = icon;
+        b.setAttribute('aria-label', label);
         b.title = title;
         b.disabled = !!disabled;
         b.addEventListener('click', onClick);
@@ -9429,8 +9841,77 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     } catch (e) { bvActLog(e); }
     acts.appendChild(citeBtn);
     acts.appendChild(openOrig);
+    acts.appendChild(focusBtn);
     acts.appendChild(closeBtn);
     top.appendChild(acts);
+    // Botoes so de icone: com o mouse em cima por mais de 3s, expandem e mostram o texto
+    try {
+      Array.from(top.querySelectorAll('.bv-ico')).forEach((b) => {
+        let wait = null, done = null, open = false, w0 = 0, m0 = 0, tgt = 0, lbl = null;
+        const grow = () => {
+          b.style.width = `${tgt}px`;
+          if (lbl) lbl.style.opacity = '1';
+        };
+        const reset = () => {
+          if (lbl) { lbl.remove(); lbl = null; }
+          ['width', 'margin-right', 'padding-left', 'padding-right', 'justify-content', 'overflow', 'position', 'z-index'].forEach((p) => b.style.removeProperty(p));
+          open = false;
+        };
+        const expand = () => {
+          wait = null;
+          try {
+            if (open || !b.isConnected || b.disabled) return;
+            const txt = String(b.getAttribute('aria-label') || b.title || '').split(' (')[0].trim();
+            if (!txt) return;
+            w0 = b.offsetWidth;
+            m0 = parseFloat(getComputedStyle(b).marginRight) || 0;
+            const rg = document.createRange();
+            rg.selectNodeContents(b);
+            const cw = rg.getBoundingClientRect().width;
+            const padL = Math.max(0, (w0 - cw) / 2);
+            b.style.width = `${w0}px`;
+            b.style.marginRight = `${m0}px`;
+            b.style.paddingLeft = `${padL}px`;
+            b.style.paddingRight = '10px';
+            b.style.justifyContent = 'flex-start';
+            b.style.overflow = 'hidden';
+            b.style.position = 'relative';
+            b.style.zIndex = '3';
+            lbl = mk('span');
+            lbl.className = 'bv-ico-lbl';
+            lbl.style.opacity = '0';
+            lbl.textContent = txt;
+            b.appendChild(lbl);
+            tgt = Math.ceil(padL + cw + 6 + lbl.getBoundingClientRect().width + 10);
+            open = true;
+            void b.offsetWidth;
+            grow();
+          } catch (e) { bvActLog(e); }
+        };
+        const shrink = () => {
+          try {
+            clearTimeout(wait);
+            wait = null;
+            if (!open) return;
+            if (lbl) lbl.style.opacity = '0';
+            b.style.width = `${w0}px`;
+            b.style.marginRight = `${m0}px`;
+            clearTimeout(done);
+            done = setTimeout(() => { try { reset(); } catch (e) { bvActLog(e); } }, 200);
+          } catch (e) { bvActLog(e); }
+        };
+        b.addEventListener('mouseenter', () => {
+          try {
+            clearTimeout(done);
+            if (open) { grow(); return; }
+            clearTimeout(wait);
+            wait = setTimeout(expand, 3000);
+          } catch (e) { bvActLog(e); }
+        });
+        b.addEventListener('mouseleave', shrink);
+        b.addEventListener('click', shrink);
+      });
+    } catch (e) { bvActLog(e); }
     el.appendChild(top);
 
     // 2. Subbar (for Comparison Modes: Curtain / Side-by-Side / Flip + Swap + Quick Remove)
@@ -9479,7 +9960,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       if (bv.cmpStyle === 'sbs') {
         const syncBtn = mk('button');
         syncBtn.type = 'button';
-        syncBtn.className = 'bv-icon-btn';
+        syncBtn.className = 'bv-icon-btn bv-w-sync';
         syncBtn.textContent = bv.syncScroll ? 'Rolagem sincronizada' : 'Rolagem independente';
         syncBtn.addEventListener('click', () => {
           bv.syncScroll = !bv.syncScroll;
@@ -9489,7 +9970,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       } else if (bv.cmpStyle === 'flip') {
         const flipBtn = mk('button');
         flipBtn.type = 'button';
-        flipBtn.className = 'bv-icon-btn';
+        flipBtn.className = 'bv-icon-btn bv-w-flip';
         flipBtn.textContent = bv.flipShowB ? 'Mostrando B (clique ou Espaço → A)' : 'Mostrando A (clique ou Espaço → B)';
         flipBtn.addEventListener('click', () => bvToggleFlip());
         sub.appendChild(flipBtn);
@@ -10020,6 +10501,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
         if (kn) kn.setAttribute('aria-valuenow', String(Math.round(bv.split)));
       } else if (bv.items.length > 1) {
         ev.preventDefault();
+        if (bvStepCompareB(ev.key === 'ArrowRight' ? 1 : -1)) return;
         const idx = Math.max(0, bv.items.findIndex((x) => x.id === bv.activeId));
         const nextIdx = ev.key === 'ArrowRight' ? (idx + 1) % bv.items.length : (idx - 1 + bv.items.length) % bv.items.length;
         bvSelectImage(bv.items[nextIdx].id);
@@ -11329,13 +11811,14 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       const W = list.getBoundingClientRect().width - 1;
       const count = Array.from(qa('#attachment_thumbnails li.attachment-content')).filter((li) => li.getClientRects().length).length;
       if (W < 200 || !count) return fallback;
-      const hi = Math.max(1, Math.min(P.nMax, Math.floor((W + P.gap) / (P.sMin + P.gap)), count));
+      const hi = Math.max(1, Math.min(P.nMax, 8, Math.floor((W + P.gap) / (P.sMin + P.gap)), count));
       const lo = Math.min(Math.max(2, Math.ceil((W + P.gap) / (P.sMax + P.gap))), hi);
       let n;
       const user = issueUserSize();
-      if (user) n = Math.max(lo, Math.min(hi, user));
+      if (perRowInfo.hold) n = Math.max(lo, Math.min(hi, Math.round((W + P.gap) / (perRowInfo.hold + P.gap))));
+      else if (user) n = Math.max(lo, Math.min(hi, user));
       else {
-        n = perRowAuto(W, count, lo, hi);
+        n = Math.max(lo, Math.min(hi, 4));
         // trava de seguranca contra vai-e-volta (ex.: barra de rolagem aparecendo/sumindo)
         const f = perRowInfo;
         const now = Date.now();
@@ -11443,6 +11926,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     refreshAllTileResolutions();
   }
   function setIssueAttSize(v) {
+    try { perRowInfo.hold = 0; } catch (e) { perRowLog(e); }
     try {
       const k = issueSizeKey();
       if (k !== 'attPerRow:') GM_setValue(k, v ? Math.round(v) : 0);
@@ -11451,9 +11935,34 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     syncAttachmentControls();
   }
   window.addEventListener('resize', () => {
+    try { if (perRowInfo.hold && window.innerWidth !== perRowInfo.holdWin) perRowInfo.hold = 0; } catch (e) { perRowLog(e); }
     cancelAnimationFrame(applyAttWidth.raf);
     applyAttWidth.raf = requestAnimationFrame(applyAttWidth);
   });
+  // Clique em botao nao pode mudar a rolagem da pagina (o Jira as vezes rola sozinho ao abrir menus)
+  document.addEventListener('click', (ev) => {
+    try {
+      if (!attOn()) return;
+      const t = ev.target && ev.target.closest ? ev.target : null;
+      if (!t || !t.closest('button, .aui-button, .aui-dd-parent, [aria-haspopup="true"]')) return;
+      if (t.closest('a[href^="#"], #uhub-beta-viewer, #uhub-sidebar, #addcomment')) return;
+      const x = window.scrollX;
+      const y = window.scrollY;
+      let touched = false;
+      const mark = () => { touched = true; };
+      const restore = () => {
+        try { if (!touched && Math.abs(window.scrollY - y) > 2) window.scrollTo({ left: x, top: y, behavior: 'instant' }); } catch {}
+      };
+      const evs = ['wheel', 'touchmove', 'keydown'];
+      evs.forEach((n) => window.addEventListener(n, mark, { passive: true }));
+      window.addEventListener('scroll', restore, { passive: true });
+      [0, 60, 150, 300, 500].forEach((ms) => setTimeout(restore, ms));
+      setTimeout(() => {
+        evs.forEach((n) => window.removeEventListener(n, mark));
+        window.removeEventListener('scroll', restore);
+      }, 700);
+    } catch (e) { perRowLog(e); }
+  }, true);
   function setAttSize(value) {
     settings.attSize = saveSetting('attSize', value);
     if (state.applied) applyColumnWidths();
@@ -11815,11 +12324,16 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     input.step = 1;
     input.value = 4;
     input.setAttribute('aria-label', 'Anexos por linha');
-    const val = mk('span');
-    val.className = 'uhub-att-val';
-    val.textContent = '4 por linha';
+    const minus = mk('span');
+    minus.className = 'uhub-att-sign';
+    minus.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+    const plus = mk('span');
+    plus.className = 'uhub-att-sign';
+    plus.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8h9M8 3.5v9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
     ['pointerdown', 'mousedown', 'click', 'keydown'].forEach((t) => li.addEventListener(t, (ev) => ev.stopPropagation()));
-    input.addEventListener('input', () => { setIssueAttSize(Number(input.value)); });
+    input.addEventListener('input', () => {
+      try { setIssueAttSize(Number(input.min) + Number(input.max) - Number(input.value)); } catch (e) { perRowLog(e); }
+    });
     const reset = mk('button');
     reset.type = 'button';
     reset.className = 'uhub-att-reset';
@@ -11840,8 +12354,9 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       ev.stopPropagation();
       confirmDeleteAllAttachments();
     });
+    li.appendChild(minus);
     li.appendChild(input);
-    li.appendChild(val);
+    li.appendChild(plus);
     li.appendChild(reset);
     li.appendChild(delAll);
     li.dataset.uhubBuilt = '1';
@@ -11865,6 +12380,50 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     const next = Math.max(-10, Math.min(10, Math.round((cur + delta) * 2) / 2));
     li.style.setProperty('--uhub-att-dy', `${next}px`);
   }
+  // Dica do controle "anexos por linha": aparece depois de 1,5 s com o mouse em cima
+  function attTipHide() {
+    try {
+      clearTimeout(attTipHide.t);
+      const el = gid('uhub-att-tip');
+      if (el) el.hidden = true;
+    } catch (e) { try { diag({ kind: 'att-tip', msg: String(e && e.message || e) }); } catch {} }
+  }
+  function attTipBind(li) {
+    try {
+      if (!li || li._uhubTipBound) return;
+      li._uhubTipBound = true;
+      let timer = 0;
+      const cancel = () => { clearTimeout(timer); timer = 0; attTipHide(); };
+      li.addEventListener('mouseenter', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          try {
+            const txt = li.dataset.uhubTip;
+            if (!txt || !li.isConnected) return;
+            let el = gid('uhub-att-tip');
+            if (!el) {
+              el = mk('div');
+              el.id = 'uhub-att-tip';
+              el.setAttribute('role', 'tooltip');
+              el.hidden = true;
+              document.body.appendChild(el);
+            }
+            if (el.textContent !== txt) el.textContent = txt;
+            el.hidden = false;
+            const r = li.getBoundingClientRect();
+            const vw = document.documentElement.clientWidth;
+            const left = Math.max(8, Math.min(r.left + r.width / 2 - el.offsetWidth / 2, vw - el.offsetWidth - 8));
+            el.style.left = `${Math.round(left)}px`;
+            el.style.top = `${Math.round(r.bottom + 8)}px`;
+            clearTimeout(attTipHide.t);
+            attTipHide.t = setTimeout(attTipHide, 8000);
+          } catch (e) { try { diag({ kind: 'att-tip', msg: String(e && e.message || e) }); } catch {} }
+        }, 1500);
+      });
+      li.addEventListener('mouseleave', cancel);
+      li.addEventListener('pointerdown', cancel);
+    } catch (e) { try { diag({ kind: 'att-tip', msg: String(e && e.message || e) }); } catch {} }
+  }
   // Mantem os dois controles (cabecalho e Ajustes) sincronizados
   function syncAttachmentControls() {
     applyAttWidth();
@@ -11876,7 +12435,8 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       if (input && pr.ok) {
         if (Number(input.min) !== pr.min) input.min = pr.min;
         if (Number(input.max) !== pr.max) input.max = pr.max;
-        if (Number(input.value) !== pr.n) input.value = pr.n;
+        const iv = pr.min + pr.max - pr.n;
+        if (Number(input.value) !== iv) input.value = iv;
         input.disabled = pr.max <= pr.min;
       }
       const prTxt = pr.ok ? `${pr.n} por linha` : '';
@@ -11887,8 +12447,10 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
         const t = rev ? 'Voltar ao tamanho automático do modo revisão' : 'Voltar ao automático (anexos por linha)';
         if (reset.title !== t) { reset.title = t; reset.setAttribute('aria-label', t); }
       }
-      const lt = rev ? 'Tamanho dos anexos no modo revisão' : 'Anexos por linha (salvo só para esta issue)';
-      if (li.title !== lt) li.title = lt;
+      if (li.hasAttribute('title')) li.removeAttribute('title');
+      const lt = 'Tamanho dos anexos: arraste para a direita para aumentar (de 2 a 8 por linha). O valor fica salvo só para esta issue, inclusive no modo revisão. O botão ao lado volta ao automático.';
+      if (li.dataset.uhubTip !== lt) li.dataset.uhubTip = lt;
+      attTipBind(li);
       const del = li.querySelector('.uhub-att-delall');
       if (del) del.hidden = !attachmentIds().length;
     });
@@ -12043,9 +12605,18 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     attSel.clear();
     document.documentElement.classList.remove('uhub-att-selecting', 'uhub-review');
     document.documentElement.style.removeProperty('--uhub-att-w-review');
+    try {
+      const rs = document.documentElement.style;
+      Array.from(rs).filter((n) => n.indexOf('--uhub-') === 0 && n !== '--uhub-logo-h' && n !== '--uhub-create-h').forEach((n) => rs.removeProperty(n));
+    } catch (e) { try { diag({ kind: 'reset-vars', msg: String(e && e.message || e) }); } catch {} }
     qa('.uhub-att-selected').forEach((li) => li.classList.remove('uhub-att-selected'));
     closeBetaViewer();
-    qa('.uhub-reply-btn, .uhub-cmt-copy, .uhub-att-sel, .uhub-att-selbar, .uhub-att-cite, .uhub-att-inspect, .uhub-att-nodel-trash, .uhub-att-li, #uhub-confirm-backdrop, #uhub-beta-viewer, #uhub-review-chip, #uhub-review-meta, #uhub-sendcheck').forEach((b) => b.remove());
+    qa('.uhub-reply-btn, .uhub-cmt-copy, .uhub-att-sel, .uhub-att-selbar, .uhub-att-cite, .uhub-att-rename, .uhub-att-inspect, .uhub-att-nodel-trash, .uhub-att-li, .uhub-copy-btn, #uhub-meta-close, #uhub-confirm-backdrop, #uhub-beta-viewer, #uhub-review-chip, #uhub-review-meta, #uhub-sendcheck').forEach((b) => b.remove());
+    try {
+      vidStop();
+      qa('.uhub-pdfp, .uhub-vidp, .uhub-zp').forEach((b) => b.remove());
+      qa('.uhub-pdf-on, .uhub-vid-on, .uhub-zp-on').forEach((li) => li.classList.remove('uhub-pdf-on', 'uhub-vid-on', 'uhub-zp-on'));
+    } catch (e) { try { diag({ kind: 'reset-previews', msg: String(e && e.message || e) }); } catch {} }
     applyAttachmentGrouping();
     attGroupSig = '';
     attPvHide();
@@ -12061,9 +12632,21 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       if (img && img.dataset.uhubThumb) {
         if (img.getAttribute('src') !== img.dataset.uhubThumb) img.setAttribute('src', img.dataset.uhubThumb);
         delete img.dataset.uhubThumb;
+        delete img.dataset.uhubSwap;
       }
     });
-    document.documentElement.classList.remove('uhub-att-prop', 'uhub-anim');
+    document.documentElement.classList.remove('uhub-att-prop', 'uhub-anim', 'uhub-float', 'uhub-capped');
+    try {
+      qa('a.attachment-title wbr').forEach((w) => w.remove());
+      qa('a.attachment-title').forEach((a) => a.normalize());
+    } catch (e) { try { diag({ kind: 'reset-titles', msg: String(e && e.message || e) }); } catch {} }
+    try {
+      if (bindAttFitWatchers.ro) bindAttFitWatchers.ro.disconnect();
+      if (bindAttFitWatchers.mo) bindAttFitWatchers.mo.disconnect();
+      bindAttFitWatchers.ro = null;
+      bindAttFitWatchers.mo = null;
+      bindAttFitWatchers.el = null;
+    } catch (e) { try { diag({ kind: 'reset-watchers', msg: String(e && e.message || e) }); } catch {} }
     qa('[data-uhub-reply]').forEach((c) => c.removeAttribute('data-uhub-reply'));
     ['uhub-settings-panel', 'uhub-notify-pop',
       'uhub-notify-status_container', 'uhub-nav-toggle', 'uhub-copy-summary'].forEach((id) => {
@@ -12110,6 +12693,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     decorateAttachments();
   }
   function applyLite() {
+    if (true) return; // modo leve desativado: fora de Internal Review o script não age
     if (state.applied || state.lite || state.userDisabled || !gid('type-val') || isInternalReview()) return;
     state.lite = true;
     state.issueKey = getIssueKey();
@@ -12176,7 +12760,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     for (let lv = 1; lv <= 4 && over(); lv++) root.classList.add(`uhub-hdr-${lv}`);
   }
   window.addEventListener('resize', () => {
-    if (topbarPinging) return;
+    if (topbarPinging || !state.applied) return;
     clearTimeout(fitTopbar.t);
     fitTopbar.t = setTimeout(fitTopbar, 200);
   });
@@ -12193,12 +12777,13 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       root.classList.add('uhub-wide', 'uhub-att', 'uhub-nav-collapsed');
       applyColumnWidths();
       decorateCopyButtons();
+      try { if (window.__uhubFix24h) window.__uhubFix24h(); if (window.__uhubEnsureKeyCopy) window.__uhubEnsureKeyCopy(); } catch (e) { try { diag({ kind: 'early-extras', msg: String(e && e.message || e) }); } catch {} }
     } else root.classList.remove('uhub-boot-pending');
     root.classList.remove('uhub-boot-head');
   }
   function bootTick() {
-    watchTopbar();
     earlyApply();
+    if (state.applied || (state.early && isInternalReview())) watchTopbar();
     applyLayout();
     if (state.applied) document.documentElement.classList.remove('uhub-boot-head');
     else applyLite();
