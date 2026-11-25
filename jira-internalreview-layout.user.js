@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jira Uhub - Layout pra Internal Review
 // @namespace    https://jira.uhub.biz/
-// @version      6.40.0
+// @version      6.40.11
 // @description  Layout otimizado e responsivo para issues Internal Review (barra de resumo editavel, painel flutuante de metadados, anexos em largura total e coluna de comentarios), com atualizacao automatica, notificacoes e indicador de status.
 // @author       Efra
 // @match        https://jira.uhub.biz/browse/*
@@ -21,6 +21,7 @@
 // @run-at       document-start
 // ==/UserScript==
 // Compatibilidade: se o gerenciador de scripts nao oferecer GM_getValue/GM_setValue/GM_addStyle (ex.: Greasemonkey 4), usa o armazenamento do proprio navegador. Onde essas funcoes existem (Tampermonkey, Violentmonkey), nada muda.
+try { console.info('[Jira Uhub] script iniciado v' + ((typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '?') + ' em ' + location.href); } catch (e) {}
 try {
   const gmKey = (k) => `uhub-gm:${k}`;
   if (typeof GM_getValue !== 'function') {
@@ -171,6 +172,18 @@ const gid = (i) => document.getElementById(i), q1 = (q) => document.querySelecto
     ensure();
     document.addEventListener('DOMContentLoaded', ensure);
     window.addEventListener('load', ensure);
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        try {
+          const list = performance.getEntriesByType('resource')
+            .filter((r) => r.transferSize > 0 && r.name.indexOf(location.origin) === 0)
+            .sort((a, b) => b.transferSize - a.transferSize)
+            .slice(0, 15)
+            .map((r) => `${Math.round(r.transferSize / 1024)} KB  ${Math.round(r.duration)} ms  ${r.name.split('?')[0].slice(-90)}`);
+          console.info('[Jira Uhub] baixados da rede (não vieram do cache):\n' + list.join('\n'));
+        } catch (e) { log(e); }
+      }, 3000);
+    });
     window.__uhubEnsureKeyCopy = ensure;
   } catch (e) { log(e); }
 })();
@@ -547,6 +560,10 @@ html.uhub-wide header#stalker .aui-page-header-main > nav, html.uhub-wide header
 html.uhub-wide header#stalker .aui-page-header-main > #summary-val { flex: 0 1 auto; min-width: 0; max-width: calc(100% - 34px) }
 html.uhub-wide header#stalker .aui-page-header-main > #summary-val.active { flex: 1 1 auto }
 html.uhub-wide header#stalker #summary-val.active :is(input, textarea) { box-sizing: border-box }
+/* Botoes Fixar e reacoes de cada comentario: o Jira os monta por ultimo; o espaco ja fica reservado para nada pular */
+html.uhub-wide .action-links.action-comment-actions { min-height: 24px }
+html.uhub-wide .action-links.action-comment-actions > jira-comment-pins { display: inline-block; vertical-align: middle; min-width: 36px; min-height: 20px }
+html.uhub-wide .action-links.action-comment-actions > jira-comment-reactions { display: inline-block; vertical-align: middle; min-width: 24px; min-height: 24px }
 #summary-val + #uhub-copy-summary { margin-left: 2px }
 /* "Responder" em cada comentario */
 .uhub-reply-btn { appearance: none; border: 0; background: #044099; color: #ffffff; padding: 0 9px; margin: 0 0 0 8px; border-radius: 10px; cursor: pointer; font: inherit; font-size: inherit; font-weight: 400; line-height: 1.5; display: inline-flex; align-items: center; gap: 4px; vertical-align: -0.15em; white-space: nowrap }
@@ -1148,7 +1165,15 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     return el ? el.textContent.trim().toLowerCase() : '';
   }
   function isInternalReview() {
-    return getIssueType().includes(TARGET_TYPE);
+    try {
+      const t = getIssueType();
+      if (t.includes(TARGET_TYPE)) return true;
+      const n = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return ['revisao interna', 'revision interna', 'revision interne'].some((x) => n.includes(x));
+    } catch (e) {
+      try { diag({ kind: 'is-internal-review', err: String((e && e.message) || e) }); } catch {}
+      return false;
+    }
   }
   function getIssueKey() {
     const meta = q1('meta[name="ajs-issue-key"]');
@@ -1634,7 +1659,6 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
 
 
     body.appendChild(buildAutoRefreshSection());
-    body.appendChild(buildBetaSection());
     body.appendChild(buildDiagnosticsSection());
     const footer = mk('div');
     footer.className = 'sp-section sp-footer';
@@ -1814,6 +1838,79 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     ev.stopPropagation();
     refreshComments();
   }
+  // ---------- Aviso "Versão X atualizada" na topbar ---------- O número vem do @version do cabeçalho do script (GM_info), então mudar a versão lá já muda a mensagem. Aparece 1 vez por navegador, só quando a versão é maior que a última já mostrada. Fica 15s (contados só com a aba visível) e some com fade out.
+  function showUpdatePill() {
+    const upLog = (e) => { try { diag({ kind: 'update-pill', err: String((e && e.message) || e) }); } catch {} };
+    try {
+      const cur = String((typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '').trim();
+      if (!cur) return;
+      const nums = (v) => String(v || '').split('.').map((n) => parseInt(n, 10) || 0);
+      const isNewer = (a, b) => {
+        const x = nums(a);
+        const y = nums(b);
+        for (let i = 0; i < Math.max(x.length, y.length); i += 1) {
+          const d = (x[i] || 0) - (y[i] || 0);
+          if (d !== 0) return d > 0;
+        }
+        return false;
+      };
+      const seen = () => String(GM_getValue('uhub-ver-seen', '') || '');
+      if (gid('uhub-update-pill') || !isNewer(cur, seen())) return;
+      const go = () => {
+        try {
+          if (gid('uhub-update-pill') || !isNewer(cur, seen())) return;
+          const sec = q1('#header .aui-header-secondary');
+          if (!sec || !sec.parentElement) return;
+          GM_setValue('uhub-ver-seen', cur);
+          const pill = mk('span');
+          pill.id = 'uhub-update-pill';
+          pill.setAttribute('role', 'status');
+          pill.textContent = `Versão ${cur} atualizada ✓`;
+          pill.style.cssText = 'flex:0 1 auto;min-width:0;align-self:center;box-sizing:border-box;margin:0 4px 0 8px;padding:0 12px;height:24px;line-height:24px;border-radius:999px;background:#ED7000;color:#ffffff;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;opacity:0';
+          sec.parentElement.insertBefore(pill, sec);
+          try { refitHeader(true); } catch (e) { upLog(e); }
+          const fin = pill.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 700, easing: 'ease-out', fill: 'forwards' });
+          let breath = null;
+          fin.onfinish = () => {
+            try {
+              pill.style.opacity = '1';
+              fin.cancel();
+              breath = pill.animate([{ opacity: 1 }, { opacity: 0.5 }, { opacity: 1 }], { duration: 3200, iterations: 1, easing: 'ease-in-out' });
+            } catch (e) { upLog(e); }
+          };
+          setTimeout(() => {
+            try {
+              const now = Number(getComputedStyle(pill).opacity);
+              const from = Number.isFinite(now) ? now : 1;
+              if (breath) breath.cancel();
+              fin.cancel();
+              pill.style.opacity = String(from);
+              const out = pill.animate([{ opacity: from }, { opacity: 0 }], { duration: 900, easing: 'ease-in', fill: 'forwards' });
+              out.onfinish = () => { try { pill.remove(); refitHeader(true); } catch (e) { upLog(e); } };
+            } catch (e) {
+              upLog(e);
+              try { pill.remove(); } catch {}
+            }
+          }, 15000);
+        } catch (e) {
+          upLog(e);
+          const p = gid('uhub-update-pill');
+          if (p) p.remove();
+        }
+      };
+      if (document.visibilityState === 'visible') go();
+      else if (!showUpdatePill.waiting) {
+        showUpdatePill.waiting = true;
+        const onVis = () => {
+          if (document.visibilityState !== 'visible') return;
+          document.removeEventListener('visibilitychange', onVis);
+          showUpdatePill.waiting = false;
+          go();
+        };
+        document.addEventListener('visibilitychange', onVis);
+      }
+    } catch (e) { upLog(e); }
+  }
   function makeHeaderLink(id, liId, label, title, icon, onClick) {
     const li = mk('li');
     li.id = liId;
@@ -1868,6 +1965,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       ul.appendChild(gearLi);
       ul.appendChild(toggleLi);
       secondary.insertBefore(ul, quick);
+      showUpdatePill();
       syncReviewButton();
       syncLayoutToggle();
       refitHeader(true);
@@ -1989,7 +2087,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     dueHour: loadPref('dueHour'),
     sendCheck: loadPref('sendCheck'),
     narrowLayout: loadPref('narrowLayout'),
-    betaViewer: loadPref('betaViewer'),
+    betaViewer: true, // sempre ativo (não configurável)
     sharedPolling: true, // sempre ativa (não configurável)
   };
   const auto = {
@@ -3363,6 +3461,113 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
   document.addEventListener('pointerdown', (ev) => {
     if (statusNudgeUntil && ev.target.closest && ev.target.closest('#opsbar-opsbar-transitions')) { statusNudgeUntil = 0; syncStatusNudge(); }
   }, true);
+  // Prioritize automatico: quando VOCE muda o status para "Prioritize" (botao #opsbar-transitions_more), a
+  // Prioridade vai para "Highest" e o "Ficar pronto" para o dia de hoje (REST, igual ao botao de trocar).
+  // Detecta pela troca do texto do botao de status com a pagina aberta; mudanca feita por outra pessoa nao conta.
+  const prioritizeState = { key: '', text: '', busy: false, timer: 0 };
+  function prioritizeLog(e) {
+    try { diag({ kind: 'prioritize', err: String((e && e.message) || e) }); } catch {}
+  }
+  function prioritizeStatusText() {
+    const el = q1('#opsbar-transitions_more .dropdown-text') || gid('opsbar-transitions_more');
+    return el ? String(cleanText(el.textContent) || '').toLowerCase() : '';
+  }
+  function prioritizeToday() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+  async function prioritizeRun(key) {
+    const st = prioritizeState;
+    if (st.busy) return;
+    st.busy = true;
+    try {
+      const base = `${jiraBaseUrl()}/rest/api/2/issue/${encodeURIComponent(key)}`;
+      const get = async (url) => {
+        const r = await fetch(url, { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      };
+      const data = await get(`${base}?fields=status,priority,duedate&expand=editmeta&_=${Date.now()}`);
+      const f = (data && data.fields) || {};
+      if (String((f.status && f.status.name) || '').trim().toLowerCase() !== 'prioritize') return;
+      let meta = data && data.editmeta && data.editmeta.fields;
+      if (!meta) {
+        try { const d2 = await get(`${base}/editmeta?_=${Date.now()}`); meta = d2 && d2.fields; } catch (e) { prioritizeLog(e); }
+      }
+      const known = !!meta;
+      meta = meta || {};
+      const canPrio = known ? !!meta.priority : true;
+      const canDue = known ? !!meta.duedate : true;
+      const allowed = meta.priority && Array.isArray(meta.priority.allowedValues) ? meta.priority.allowedValues : null;
+      const hit = allowed ? allowed.find((p) => p && String(p.name || '').trim().toLowerCase() === 'highest') : null;
+      const prio = hit ? (hit.id !== undefined ? { id: String(hit.id) } : { name: String(hit.name) }) : (allowed ? null : { name: 'Highest' });
+      const today = prioritizeToday();
+      const fields = {};
+      if (canPrio && prio && String((f.priority && f.priority.name) || '').trim().toLowerCase() !== 'highest') fields.priority = prio;
+      if (canDue && String(f.duedate || '').slice(0, 10) !== today) fields.duedate = today;
+      const warns = [];
+      if (!canPrio) warns.push('Prioridade não editável');
+      else if (!prio) warns.push('prioridade Highest não encontrada');
+      if (!canDue) warns.push('data não editável');
+      if (!Object.keys(fields).length) {
+        if (warns.length) showToast(`Prioritize: ${warns.join(' · ')}`, 4000);
+        return;
+      }
+      const res = await fetch(base, {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Atlassian-Token': 'no-check', Accept: 'application/json' },
+        body: JSON.stringify({ fields }),
+      });
+      if (!res.ok && res.status !== 204) {
+        let det = '';
+        try {
+          const j = await res.json();
+          det = (j && j.errors && Object.values(j.errors).join('; ')) || (j && j.errorMessages && j.errorMessages.join('; ')) || '';
+        } catch {}
+        showToast(det ? `Prioritize: não foi possível ajustar (${det})` : `Prioritize: não foi possível ajustar (HTTP ${res.status})`, 4500);
+        return;
+      }
+      try { await refreshComments(); } catch (e) { prioritizeLog(e); }
+      try { syncReviewMeta(); } catch (e) { prioritizeLog(e); }
+      showToast(warns.length ? `Prioritize aplicado (${warns.join(' · ')})` : '⚡ Prioritize: prioridade Highest e data de hoje aplicadas', 3500);
+    } catch (e) {
+      prioritizeLog(e);
+      showToast('Prioritize: falha ao ajustar prioridade e data', 3500);
+    } finally {
+      st.busy = false;
+    }
+  }
+  async function prioritizeStart(key) {
+    try {
+      const author = await lastStatusChangeAuthor(key);
+      const me = currentUser();
+      if (author && me && author.name !== me) return;
+      await prioritizeRun(key);
+    } catch (e) { prioritizeLog(e); }
+  }
+  function prioritizeCheck() {
+    try {
+      const key = state.issueKey || getIssueKey();
+      const text = prioritizeStatusText();
+      if (!key || !text) return;
+      const st = prioritizeState;
+      if (st.key !== key) { st.key = key; st.text = text; return; }
+      if (text === st.text) return;
+      const prev = st.text;
+      st.text = text;
+      if (text !== 'prioritize' || prev === 'prioritize' || !state.applied) return;
+      prioritizeStart(key);
+    } catch (e) { prioritizeLog(e); }
+  }
+  try {
+    const prioritizeMo = new MutationObserver(() => {
+      if (prioritizeState.timer) return;
+      prioritizeState.timer = setTimeout(() => { prioritizeState.timer = 0; prioritizeCheck(); }, 300);
+    });
+    prioritizeMo.observe(document, { childList: true, subtree: true, characterData: true });
+  } catch (e) { prioritizeLog(e); }
   function handleCheckError(err) {
     const kind = err && err.kind;
     if (kind === 'session') {
@@ -3383,9 +3588,117 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     if (!auto.failures) return base;
     return Math.min(MAX_BACKOFF_SEC, base * Math.pow(2, auto.failures));
   }
+  // Comentarios adiantados: o Jira so desenha o texto depois de baixar os arquivos pesados. Aqui o texto e buscado
+  // logo no inicio e mostrado na hora. Se o Jira desenhar a lista dele depois, as copias repetidas saem no mesmo quadro.
+  function earlyPreview(doc, sa) {
+    try {
+      const ph = gid('activity-panel-placeholder');
+      const frag = doc.querySelector('#issue_actions_container');
+      if (!ph || !frag || !sa || !sa.contains(ph)) return false;
+      const modContent = () => { const am = gid('activitymodule'); return am ? am.querySelector('.mod-content') : null; };
+      const offsetOf = (el) => {
+        const m = modContent();
+        return (el && m) ? el.getBoundingClientRect().top - m.getBoundingClientRect().top : NaN;
+      };
+      let pad = 0;
+      try { pad = Number(GM_getValue('uhub-tabs-h', 0)) || 0; } catch (e) { pad = 0; }
+      if (pad < 0 || pad > 200) pad = 0;
+      const box = mk('div');
+      box.setAttribute('data-uhub-preview', '1');
+      box.style.cssText = 'pointer-events:none;user-select:none;padding-top:' + pad + 'px';
+      const copy = document.importNode(frag, true);
+      [copy].concat(Array.from(copy.querySelectorAll('[id]'))).forEach((el) => el.removeAttribute('id'));
+      Array.from(copy.querySelectorAll('script, jira-comment-pins, jira-comment-reactions, jira-comment-pins-discovery')).forEach((el) => el.remove());
+      box.appendChild(copy);
+      ph.appendChild(box);
+      let prevOff = NaN;
+      let first = true;
+      let raf = 0;
+      let mo = null;
+      const stop = () => { try { if (mo) mo.disconnect(); } catch (e) { chatResizeLog(e); } mo = null; };
+      const tick = () => {
+        raf = 0;
+        try {
+          if (box.isConnected) {
+            if (first) {
+              first = false;
+              const o = offsetOf(box.querySelector('.activity-comment'));
+              if (!Number.isNaN(o)) prevOff = o;
+            }
+            const real = Array.from(sa.querySelectorAll('.activity-comment')).some((el) => !el.closest('[data-uhub-preview]'));
+            if (!real) return;
+            box.remove();
+          }
+          stop();
+          const ro = offsetOf(sa.querySelector('.activity-comment'));
+          if (!Number.isNaN(ro) && !Number.isNaN(prevOff) && sa.scrollTop < 2) {
+            const delta = ro - prevOff;
+            const np = Math.round(pad + delta);
+            if (Math.abs(delta) >= 2 && np >= 0 && np <= 200) GM_setValue('uhub-tabs-h', np);
+          }
+        } catch (e) { chatResizeLog(e); }
+      };
+      mo = new MutationObserver(() => { if (!raf) raf = requestAnimationFrame(tick); });
+      mo.observe(sa, { childList: true, subtree: true });
+      setTimeout(stop, 120000);
+      raf = requestAnimationFrame(tick);
+      return true;
+    } catch (e) { chatResizeLog(e); return false; }
+  }
+  let earlyDone = false;
+  async function earlyComments() {
+    if (earlyDone) return;
+    earlyDone = true;
+    try {
+      const sa0 = scrollAreaEl();
+      const why = (m) => console.info('[Jira Uhub] adiantar comentários: ' + m + ' | ' + Math.round(performance.now()) + ' ms');
+      const key = activeTabKey();
+      if (!tabShowsComments(key) || !state.applied || !state.issueKey) { why('aba não mostra comentários ou layout não pronto'); return; }
+      if (domCommentIds(sa0).size) { why('comentários já estavam na tela'); return; }
+      const doc = await fetchPanelDoc(key);
+      why('painel recebido');
+      const sa = scrollAreaEl();
+      if (!state.applied || !sa || domCommentIds(sa).size || userIsBusyInPanel()) { why('a tela mudou enquanto buscava'); return; }
+      if (!domCommentIds(doc).size) { why('painel recebido sem comentários'); return; }
+      if (!earlyPreview(doc, sa)) {
+        why('não achou onde colocar');
+        try {
+          const am = gid('activitymodule');
+          const frag = doc.querySelector('#activitymodule') || doc.querySelector('#issue_actions_container') || doc.querySelector('#comment-tabpanel-tabpanel') || doc.querySelector('.issuePanelWrapper');
+          console.info('[Jira Uhub] diagnóstico painel | no painel recebido: ' + REFRESH_TARGET_SELECTORS.map((s) => s + '=' + (doc.querySelector(s) ? 'sim' : 'não')).join(', '));
+          console.info('[Jira Uhub] diagnóstico painel | na tela agora: ' + REFRESH_TARGET_SELECTORS.map((s) => s + '=' + (q1(s) ? 'sim' : 'não')).join(', '));
+          console.info('[Jira Uhub] diagnóstico painel | #activitymodule agora: ' + (am ? am.outerHTML.replace(/\s+/g, ' ').slice(0, 900) : 'não existe'));
+          console.info('[Jira Uhub] diagnóstico painel | recebido começa com: ' + (frag ? frag.outerHTML.replace(/\s+/g, ' ').slice(0, 900) : '?'));
+        } catch (e) { chatResizeLog(e); }
+        return;
+      }
+      console.info('[Jira Uhub] comentários adiantados (prévia) em ' + Math.round(performance.now()) + ' ms');
+      const dedupe = () => {
+        try {
+          const seen = new Set();
+          Array.from(sa.querySelectorAll('.activity-comment[id^="comment-"]')).forEach((el) => {
+            if (seen.has(el.id)) el.remove(); else seen.add(el.id);
+          });
+        } catch (e) { chatResizeLog(e); }
+      };
+      let raf = 0;
+      const mo = new MutationObserver(() => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => { raf = 0; dedupe(); });
+      });
+      mo.observe(sa, { childList: true, subtree: true });
+      setTimeout(() => { try { mo.disconnect(); } catch (e) { chatResizeLog(e); } }, 30000);
+    } catch (e) { chatResizeLog(e); console.info('[Jira Uhub] adiantar comentários: erro ' + String((e && e.message) || e)); }
+  }
   function scheduleAutoRefresh(delaySec) {
     stopAutoRefreshTimer();
     if (!prefs.autoRefresh || auto.stopped || !state.applied) return;
+    try {
+      if (document.readyState !== 'complete' && performance.now() < 8000) {
+        auto.timer = setTimeout(() => scheduleAutoRefresh(delaySec), 400);
+        return;
+      }
+    } catch (e) { chatResizeLog(e); }
     auto.timer = setTimeout(runAutoCycle, Math.max(0.15, delaySec) * 1000);
   }
   async function runAutoCycle() {
@@ -4437,7 +4750,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     } catch (e) { chatResizeLog(e); }
   }
   window.addEventListener('resize', () => { try { requestAnimationFrame(rmFit); } catch (e) { chatResizeLog(e); } });
-  setInterval(rmFit, 600);
+  setInterval(() => { try { if (!document.hidden) rmFit(); } catch (e) { chatResizeLog(e); } }, 600);
   function watchHeaderHeight() {
     measureHeaderHeight();
     measureEdgeFix();
@@ -4591,7 +4904,16 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     if (reconcileObserver) return;
     observedStalker = q1('header#stalker');
     observedAddComment = gid('addcomment');
-    reconcileObserver = new MutationObserver(scheduleReconcile);
+    reconcileObserver = new MutationObserver((recs) => {
+      try {
+        const skip = '#uhub-beta-viewer, #uhub-settings-panel, #uhub-notify-pop, #uhub-refresh-toast';
+        for (const r of recs) {
+          const t = r.target;
+          const el = t && (t.nodeType === 1 ? t : t.parentElement);
+          if (!el || !el.closest || !el.closest(skip)) { scheduleReconcile(); return; }
+        }
+      } catch (e) { chatResizeLog(e); scheduleReconcile(); }
+    });
     reconcileObserver.observe(document.body, { childList: true, subtree: true });
   }
   function stopReconcileObserver() {
@@ -4677,9 +4999,15 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     requestAnimationFrame(updateOverlayLayering);
   }
   function onOverlayMutations(records) {
-    for (const r of records) {
-      if (!isOurs(r.target)) { scheduleOverlayCheck(); return; }
-    }
+    try {
+      if (onOverlayMutations.t) return;
+      for (const r of records) {
+        if (!isOurs(r.target)) {
+          onOverlayMutations.t = setTimeout(() => { onOverlayMutations.t = 0; scheduleOverlayCheck(); }, 120);
+          return;
+        }
+      }
+    } catch (e) { chatResizeLog(e); }
   }
   function onAnyClickForOverlay() {
     scheduleOverlayCheck();
@@ -5739,6 +6067,8 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
       while ((n = w.nextNode())) {
         if (/adicionou um coment[aá]rio/i.test(n.nodeValue)) {
           n.nodeValue = n.nodeValue.replace(/adicionou um coment[aá]rio/gi, 'comentou');
+        } else if (/\badded a comment\b/i.test(n.nodeValue)) {
+          try { n.nodeValue = n.nodeValue.replace(/\badded a comment\b/gi, 'commented'); } catch (e) { try { diag({ kind: 'shorten-en', err: String((e && e.message) || e) }); } catch {} }
         }
       }
     });
@@ -6424,7 +6754,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     GM_setValue(READ_AT_KEY, JSON.stringify(map));
   }
   // Status final da issue: sem ampulheta nem selo
-  const FINAL_STATUS_RE = /^(approved|aprovad[oa]|done|conclu[ií]d[oa]|canceled|cancelled|cancelad[oa]|closed|fechad[oa]|resolved|resolvid[oa])$/i;
+  const FINAL_STATUS_RE = /^(approved|aprovad[oa]|aprobad[oa]|approuv[eé]e?|done|hecho|fait|conclu[ií]d[oa]|finalizad[oa]|terminad[oa]|canceled|cancelled|cancelad[oa]|annul[eé]e?|closed|fechad[oa]|cerrad[oa]|ferm[eé]e?|resolved|resolvid[oa]|resuelt[oa]|r[eé]solu[e]?)$/i;
   function issueIsFinal() {
     const trig = gid('opsbar-transitions_more');
     if (trig && /status-category_done/.test(trig.className)) return true;
@@ -7272,7 +7602,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     const isVidFile = /\.(mp4|m4v|mov|webm|ogv)$/i.test(ref.file || '');
     const isPdfFile = /\.pdf$/i.test(ref.file || '');
     const showable = isZip ? !!(zz.entries && zz.entries.length) : (isImageAttachmentLi(li, ref) || isVidFile || isPdfFile);
-    if (!prefs.betaViewer || !attOn() || !showable) {
+    if (true) { // botão olho removido: o clique na thumb abre o visualizador
       if (btn) btn.remove();
       return;
     }
@@ -7393,6 +7723,45 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     }
   }
   document.addEventListener('click', onCommentImageClick, true);
+  // Clique na thumb ou no título do anexo (e em links de anexo nos comentários) abre no Visualizador, no lugar do visualizador padrão do Jira.
+  function onAttachmentOpenClick(ev) {
+    try {
+      if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+      if (!prefs.betaViewer || !attOn()) return;
+      const tgt = ev.target;
+      if (!tgt || !tgt.closest) return;
+      if (tgt.closest('#uhub-beta-viewer, #uhub-att-pv, #addcomment, .uhub-att-sel, .attachment-delete, .uhub-att-cite, .uhub-att-rename, .uhub-att-rn, .uhub-attg-chip, .uhub-att-nodel-trash')) return;
+
+      const a = tgt.closest('a[file-preview-id], a[href*="/secure/attachment/"]');
+      if (!a) return;
+      const m = /\/secure\/attachment\/(\d+)\//.exec(a.getAttribute('href') || '');
+      const id = a.getAttribute('file-preview-id') || (m && m[1]) || '';
+      if (!id) return;
+      const li = Array.from(qa('#attachment_thumbnails li.attachment-content')).find((x) => {
+        const r = attachmentRef(x);
+        return !!r && r.id === String(id);
+      });
+      const ref = li ? attachmentRef(li) : null;
+      if (!li || !ref) return;
+      if (isZipAttachmentLi(li, ref)) {
+        const zf = bvZip(ref.id).entries;
+        if (!zf || !zf.length) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        bv.zipOpen.add(ref.id);
+        openBetaViewer(`${ref.id}/${zf[0].index}`);
+        return;
+      }
+      const viewable = isImageAttachmentLi(li, ref) || /\.(mp4|m4v|mov|webm|ogv|pdf)$/i.test(ref.file || '');
+      if (!viewable) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      openBetaViewer(ref.id, ref.file);
+    } catch (e) {
+      try { diag({ kind: 'attachment-open-click', err: String((e && e.message) || e) }); } catch {}
+    }
+  }
+  document.addEventListener('click', onAttachmentOpenClick, true);
   // ---------- Visualizador Unificado BETA: Leitor Vertical 1:1 + Light vs Dark (_dm) + Comparacao (max 2 imagens) ----------
   const BV_ZOOM_STEPS = [25, 50, 75, 100, 125, 150, 200, 250, 300];
 
@@ -8240,7 +8609,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     el.id = 'uhub-beta-viewer';
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-modal', 'true');
-    el.setAttribute('aria-label', 'Leitor vertical 1:1 e comparador Beta');
+    el.setAttribute('aria-label', 'Leitor vertical 1:1 e comparador');
     try { new MutationObserver(() => { if (el.hidden) el.dataset.bvLive = ''; }).observe(el, { attributes: true, attributeFilter: ['hidden'] }); } catch (e) { bvActLog(e); }
     bvBindOutsideClose(el);
     el.hidden = true;
@@ -9497,10 +9866,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
 
     const brand = mk('div');
     brand.className = 'bv-brand';
-    const badge = mk('span');
-    badge.className = 'bv-beta-tag';
-    badge.textContent = 'Beta';
-    brand.appendChild(badge);
+    const badge = mk('span'); // selo Beta removido: não entra na tela
 
     // Setas laterais fora da imagem (ciclicas: da ultima volta para a primeira)
     const prevBtn = mk('button');
@@ -10911,7 +11277,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     const canInspect = !!(prefs.betaViewer && isImg && resolvedId);
     el.classList.toggle('pv-clickable', canInspect);
     const pvImgBox = el.querySelector('.pv-img');
-    if (pvImgBox) pvImgBox.title = canInspect ? `Clique para abrir ${resolvedFile} no visualizador 1:1 (Beta)` : '';
+    if (pvImgBox) pvImgBox.title = canInspect ? `Clique para abrir ${resolvedFile} no visualizador 1:1` : '';
     el.dataset.hasMeta = '1';
     const img = el.querySelector('img');
     if (src && img.getAttribute('src') !== src) img.setAttribute('src', src);
@@ -12187,7 +12553,7 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
         ? 'Selecione 2 imagens para comparar'
         : (selImgCount > 2
           ? 'Selecione apenas 2 imagens por vez para comparar'
-          : 'Comparar 2 imagens selecionadas (Beta)');
+          : 'Comparar 2 imagens selecionadas');
       if (cmp.title !== ct) cmp.title = ct;
     }
     const deletable = Array.from(attSel).filter((id) => { const li = attLiById(id); return li && li.querySelector('.attachment-delete a[href]'); }).length;
@@ -12542,6 +12908,22 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     renderDueChip();
     bindAttachmentPreview();
     if (!state.dueTimer) state.dueTimer = setInterval(() => { if (state.applied) renderDueChip(); }, 60000);
+    try {
+      const mark = (nome) => {
+        try {
+          const nav = performance.getEntriesByType('navigation')[0] || {};
+          const pins = Array.from(qa('jira-comment-pins'));
+          console.info('[Jira Uhub] tempos ' + nome + ': ' + Math.round(performance.now()) + ' ms'
+            + ' | HTML recebido: ' + Math.round(nav.responseEnd || 0) + ' ms'
+            + ' | página: ' + document.readyState
+            + ' | comentários na tela: ' + qa('.activity-comment').length
+            + ' | botões Fixar existentes: ' + pins.length
+            + ' | botões Fixar prontos: ' + pins.filter((p) => p.querySelector('button')).length);
+        } catch (e) { chatResizeLog(e); }
+      };
+      mark('layout aplicado');
+      [1000, 2500, 5000, 9000].forEach((ms) => setTimeout(() => mark('+' + ms + 'ms'), ms));
+    } catch (e) { chatResizeLog(e); }
     decorateCopyButtons();
     buildSidebar();
     placeSidebar();
@@ -12772,14 +13154,17 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
     if (state.applied || state.early || state.userDisabled) return;
     if (!gid('type-val')) return;
     state.early = true;
+    try { console.info('[Jira Uhub] tipo da issue lido: "' + getIssueType() + '" → ' + (isInternalReview() ? 'Internal Review (layout ativado)' : 'outro tipo (layout não ativado)')); } catch (e) { try { diag({ kind: 'boot-log', err: String((e && e.message) || e) }); } catch {} }
     const root = document.documentElement;
     if (isInternalReview()) {
       root.classList.add('uhub-wide', 'uhub-att', 'uhub-nav-collapsed');
       applyColumnWidths();
       decorateCopyButtons();
       try { if (window.__uhubFix24h) window.__uhubFix24h(); if (window.__uhubEnsureKeyCopy) window.__uhubEnsureKeyCopy(); } catch (e) { try { diag({ kind: 'early-extras', msg: String(e && e.message || e) }); } catch {} }
-    } else root.classList.remove('uhub-boot-pending');
-    root.classList.remove('uhub-boot-head');
+    } else {
+      root.classList.remove('uhub-boot-pending');
+      root.classList.remove('uhub-boot-head');
+    }
   }
   function bootTick() {
     earlyApply();
@@ -12804,7 +13189,14 @@ html.uhub-wide #description-val .user-content-block, html.uhub-wide #description
   function startBoot() {
     state.early = false;
     document.documentElement.classList.add('uhub-boot-pending', 'uhub-boot-head');
-    bootObserver = new MutationObserver(bootTick);
+    bootObserver = new MutationObserver(() => {
+      try {
+        if (document.hidden) { bootTick(); return; }
+        if (startBoot.q) return;
+        startBoot.q = true;
+        requestAnimationFrame(() => { startBoot.q = false; try { bootTick(); } catch (e) { chatResizeLog(e); } });
+      } catch (e) { chatResizeLog(e); }
+    });
     bootObserver.observe(document.documentElement, { childList: true, subtree: true });
     setTimeout(bootValve, 4000);
   }
